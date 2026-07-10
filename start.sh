@@ -45,6 +45,8 @@ generate_config() {
   CLICKHOUSE_PASSWORD=$(gen_pswd)
   VALKEY_PASSWORD=$(gen_pswd)
   QDRANT_API_KEY=$(gen_token)
+  MINIO_ROOT_USER=minioadmin
+  MINIO_ROOT_PASSWORD=$(gen_pswd)
 
   # ── 共享密钥 ──
   JWT_SECRET=$(gen_jwt)
@@ -56,8 +58,8 @@ generate_config() {
   PAYMENT_SERVICE_KEY=$(gen_token)
   OUTBOUND_PAYMENT_HMAC_SECRET=$(gen_jwt)
   REVENUE_WITHDRAW_HMAC_SECRET=$(gen_jwt)
-  S3_ACCESS_KEY=$(gen_token)
-  S3_SECRET_KEY=$(gen_jwt)
+  S3_ACCESS_KEY=${MINIO_ROOT_USER}
+  S3_SECRET_KEY=${MINIO_ROOT_PASSWORD}
   MAIL_PASSWORD=""
   STRIPE_SECRET_KEY=""
   OAUTH_GITHUB_CLIENT_SECRET=""
@@ -77,6 +79,8 @@ CLICKHOUSE_USER=default
 CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
 VALKEY_PASSWORD=${VALKEY_PASSWORD}
 QDRANT_API_KEY=${QDRANT_API_KEY}
+MINIO_ROOT_USER=${MINIO_ROOT_USER}
+MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
 EOF
 
   # ── 2. .env (compose 变量插值用) ──
@@ -87,6 +91,8 @@ POSTGRES_DB=alephant
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 VALKEY_PASSWORD=${VALKEY_PASSWORD}
 QDRANT_API_KEY=${QDRANT_API_KEY}
+MINIO_ROOT_USER=${MINIO_ROOT_USER}
+MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
 EOF
 
   # ── 3. saas-service.env ──
@@ -101,6 +107,45 @@ APP_BASE_URL=http://localhost
 MASTER_KEY=${MASTER_KEY}
 MASTER_KEY_ENCRYPTION_KEY=${MASTER_KEY_ENCRYPTION_KEY}
 JWT_SECRET=${JWT_SECRET}
+ENABLE_SWAGGER_UI=true
+JWT_ACCESS_TTL=900
+JWT_REFRESH_TTL=604800
+CSRF_TOKEN_TTL=86400
+REDIS_KEY_PREFIX=alephant:
+REDIS_LOCK_DEFAULT_TTL_SECONDS=30
+REDIS_LOCK_RENEW_INTERVAL_SECONDS=10
+REDIS_STRONG_COORDINATION=true
+IDEMPOTENCY_TTL_SECONDS=86400
+LAST_USED_DEBOUNCE_SECONDS=5
+APP_BASE_URL=http://localhost
+ENV=development
+REFRESH_COOKIE_NAME=refresh_token
+REFRESH_COOKIE_HTTP_ONLY=true
+REFRESH_COOKIE_SAME_SITE=lax
+REFRESH_COOKIE_SECURE=false
+ENFORCE_TRIAL_ONCE_PER_USER=false
+AUTH_RATE_LIMIT_PER_MIN=60
+SALES_LEAD_EMAIL=admin@example.com
+
+# Stripe (placeholder — 替换为真实密钥)
+STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+STRIPE_PRICE_PRO_MONTHLY=price_pro_monthly
+STRIPE_PRICE_PRO_YEARLY=price_pro_yearly
+STRIPE_PRICE_TEAM_MONTHLY=price_team_monthly
+STRIPE_PRICE_TEAM_YEARLY=price_team_yearly
+STRIPE_PRICE_ENTERPRISE_MONTHLY=price_enterprise_monthly
+STRIPE_PRICE_ENTERPRISE_YEARLY=price_enterprise_yearly
+STRIPE_PRICE_EXTRA_VK=price_extra_vk
+STRIPE_PRICE_LOG_PACK_PRO=price_log_pro
+STRIPE_PRICE_LOG_PACK_TEAM=price_log_team
+STRIPE_PRICE_LOG_PACK_ENTERPRISE=price_log_enterprise
+STRIPE_METER_EVENT_LOG_PACK_PRO=log_pack_pro
+STRIPE_METER_EVENT_LOG_PACK_TEAM=log_pack_team
+STRIPE_METER_EVENT_LOG_PACK_ENTERPRISE=log_pack_enterprise
+LOG_OVERAGE_E2E_METER_EVENT_NAME=
+LOG_OVERAGE_E2E_REAL_STRIPE=false
+LOG_OVERAGE_E2E_STRIPE_CUSTOMER_ID=
 
 # OAuth (placeholder)
 OAUTH_GITHUB_CLIENT_ID=
@@ -116,6 +161,33 @@ MAIL_USERNAME=
 MAIL_PASSWORD=${MAIL_PASSWORD}
 MAIL_FROM_ADDRESS=noreply@example.com
 MAIL_FROM_NAME=Alephant
+
+# Payment
+PAYMENT_SERVICE_BASE_URL=http://ledge-service:8080
+PAYMENT_SERVICE_KEY=${PAYMENT_SERVICE_KEY}
+PAYMENT_LEDGER_GRPC_ADDR=ledge-service:9090
+PAYMENT_LEDGER_INTERNAL_TOKEN=${PAYMENT_LEDGER_INTERNAL_TOKEN}
+
+# Managed Wallets
+MANAGED_WALLETS_ENABLED=false
+MANAGED_WALLETS_API_ENABLED=false
+MANAGED_WALLETS_ENVIRONMENT=development
+MANAGED_WALLETS_DAILY_WITHDRAW_LIMIT=1000
+MANAGED_WALLETS_MAX_WITHDRAW_AMOUNT=100
+MANAGED_WALLETS_PLATFORM_FEE_DESTINATION_TREASURY_BASE=
+MANAGED_WALLETS_PLATFORM_FEE_DESTINATION_TREASURY_SOLANA=
+MANAGED_WALLETS_PLATFORM_FEE_WITHDRAW_CREATE_ENABLED=false
+REVENUE_WITHDRAW_API_ENABLED=false
+
+# Policy / Notification
+POLICY_CONFIG_STREAM=alephant-policy
+POLICY_NOTIFY_CHANNEL=alephant-notify
+POLICY_STREAM_MAXLEN=10000
+NOTIFICATION_ENCRYPTION_KEY=${NOTIFICATION_ENCRYPTION_KEY}
+NOTIFICATION_OUTBOX_NOTIFY_CHANNEL=alephant-notification
+
+# X402
+X402_PLATFORM_FEE_BPS=50
 
 # HMAC
 OUTBOUND_PAYMENT_HMAC_SECRET=${OUTBOUND_PAYMENT_HMAC_SECRET}
@@ -137,7 +209,21 @@ MAIL_USERNAME=
 MAIL_PASSWORD=${MAIL_PASSWORD}
 MAIL_FROM_ADDRESS=noreply@example.com
 MAIL_FROM_NAME=Alephant
+POLICY_CONFIG_STREAM=alephant-policy
+POLICY_NOTIFY_CHANNEL=alephant-notify
+POLICY_USE_STREAM=true
+POLICY_STREAM_BATCH_SIZE=100
+POLICY_STREAM_BLOCK_MS=1000
+POLICY_STREAM_CONSUMER_GROUP=policy-consumer
+POLICY_STREAM_CONSUMER_NAME=policy-node-0
+POLICY_BOOTSTRAP_REFRESH=true
+POLICY_BOOTSTRAP_REFRESH_CONCURRENCY=10
+POLICY_BOOTSTRAP_REFRESH_TIMEOUT_SEC=30
+ENDPOINT_POLICY_CONFIG_STREAM=alephant-policy
+WATCHER_ENABLED=true
 NOTIFICATION_ENCRYPTION_KEY=${NOTIFICATION_ENCRYPTION_KEY}
+NOTIFICATION_OUTBOX_NOTIFY_CHANNEL=alephant-notification
+LOG_LEVEL=info
 EOF
 
   # ── 5. ai-gateway.env ──
@@ -148,6 +234,8 @@ REDIS_URL=redis://default:${VALKEY_PASSWORD}@valkey:6379/0
 CLICKHOUSE_CREDS=default:${CLICKHOUSE_PASSWORD}
 AI_GATEWAY__SEMANTIC_CACHE__QDRANT__URL=http://qdrant:6333
 AI_GATEWAY__SEMANTIC_CACHE__QDRANT__API_KEY=${QDRANT_API_KEY}
+AI_GATEWAY__TIKV_KV__PD_ENDPOINTS=["pd:2379"]
+AI_GATEWAY__TIKV_KV__CA_CERT_PATH=
 AI_GATEWAY__CLOUDFLARE_KV__ACCOUNT_ID=
 AI_GATEWAY__CLOUDFLARE_KV__API_BASE=
 AI_GATEWAY__CLOUDFLARE_KV__API_TOKEN=
@@ -156,9 +244,10 @@ AI_GATEWAY__POLICY__GRPC_ENDPOINT=policy-service:9090
 AI_GATEWAY__X402__PAYMENT_GRPC_ENDPOINT=
 AI_GATEWAY__X402__UPSTREAM_AUTH_KEY=
 AI_GATEWAY__ALEPHANT__LOG_COLLECTOR_URL=http://logs-collector:8585
-S3_ENDPOINT=
-S3_REGION=
-S3_BUCKET_NAME=
+AI_GATEWAY__REQUEST_LOG__TRANSPORT=log_collector
+S3_ENDPOINT=http://minio:9000
+S3_REGION=us-east-1
+S3_BUCKET_NAME=alephant
 S3_ACCESS_KEY=${S3_ACCESS_KEY}
 S3_SECRET_KEY=${S3_SECRET_KEY}
 JWT_SECRET=${JWT_SECRET}
@@ -175,9 +264,9 @@ EOF
 POSTGRES_DATABASE_URL=postgresql://alephant:${POSTGRES_PASSWORD}@postgres:5432/alephant
 REDIS_URL=redis://default:${VALKEY_PASSWORD}@valkey:6379/0
 CLICKHOUSE_CREDS=default:${CLICKHOUSE_PASSWORD}
-S3_ENDPOINT=
-S3_REGION=
-S3_BUCKET_NAME=
+S3_ENDPOINT=http://minio:9000
+S3_REGION=us-east-1
+S3_BUCKET_NAME=alephant
 S3_ACCESS_KEY=${S3_ACCESS_KEY}
 S3_SECRET_KEY=${S3_SECRET_KEY}
 JWT_SECRET=${JWT_SECRET}
@@ -241,27 +330,27 @@ load_images() {
 
 # ─── 启动服务 ──────────────────────────────────────────────────────────────
 start_services() {
-  # 确保所有业务镜像存在（用 alpine 占位，防止 compose 尝试从私有 registry 拉取）
+  # 确保 alpine 基础镜像存在（用于占位）
+  if ! docker image inspect alpine:latest &>/dev/null; then
+    echo -n "  拉取 alpine（基础镜像）... "
+    docker pull alpine:latest 2>/dev/null && echo -e "${GREEN}✓${NC}" || { err "无法拉取 alpine"; exit 1; }
+  fi
+
+  # 用 alpine 为所有缺失镜像创建占位（含中间件），确保 compose 能启动
   for img_spec in \
     "registry.digitalocean.com/wechart/alephantai-app:20260613081608" \
     "registry.digitalocean.com/wechart/alephantai-saas-service:20260629121515" \
     "registry.digitalocean.com/wechart/alephantai-policy-service:20260613220845" \
     "registry.digitalocean.com/wechart/alephantai-ai-gateway:20260629120913" \
-    "registry.digitalocean.com/wechart/alephantai-logs-collector:20260618231935"; do
+    "registry.digitalocean.com/wechart/alephantai-logs-collector:20260618231935" \
+    "postgres:17" \
+    "clickhouse/clickhouse-server:24.3" \
+    "valkey/valkey:9.0.2" \
+    "qdrant/qdrant:v1.17.1" \
+    "pingcap/pd:v7.5.0" \
+    "pingcap/tikv:v7.5.0" \
+    "pgsty/minio:latest"; do
     docker image inspect "$img_spec" &>/dev/null || docker tag alpine:latest "$img_spec" 2>/dev/null || true
-  done
-
-  # 拉取中间件镜像
-  info "拉取中间件镜像..."
-  for img in \
-    postgres:17 \
-    clickhouse/clickhouse-server:24.3 \
-    valkey/valkey:9.0.2 \
-    qdrant/qdrant:v1.17.1; do
-    if ! docker image inspect "$img" &>/dev/null; then
-      echo -n "  拉取 ${img}... "
-      docker pull "$img" 2>/dev/null && echo -e "${GREEN}✓${NC}" || echo -e "${YELLOW}跳过${NC}"
-    fi
   done
 
   info "启动所有服务..."
