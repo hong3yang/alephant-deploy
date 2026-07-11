@@ -61,6 +61,99 @@ curl --version || wget --version
 | **minio** | S3 兼容对象存储（S3 API/Console） | 9000 / 9001 |
 | **qdrant** | 向量数据库 | 6333 / 6334 |
 
+## 可访问地址
+
+部署后通过 Nginx 反向代理（`config/nginx/nginx.conf`）提供以下入口：
+
+| 端口 | server | 路径 | 后端服务 | 说明 |
+|---|---|---|---|---|
+| **80** | `_` (默认) | `/api/v1/` → | saas-service:8080 | SaaS 后端 API |
+| | | `/v1/policy` → | policy-service:8090 | 策略服务 |
+| | | `/` → | SPA (root /app) | SaaS 前端页面 |
+| **81** | `_` (默认) | `/v1/` → | ai-gateway:8080 | AI 网关 API |
+| | | 其余路径 | 404 | |
+| **82** | `_` (默认) | `/v1/` → | logs-collector:8585 | 日志收集与分析 API |
+| | | 其余路径 | 404 | |
+
+各后端服务也直接暴露在 `127.0.0.1` 上（仅本机可访问），便于调试：
+
+```bash
+curl http://127.0.0.1:80/api/v1/...     # SaaS API (通过 Nginx)
+curl http://127.0.0.1:81/v1/...         # AI Gateway (通过 Nginx)
+curl http://127.0.0.1:82/v1/...         # Logs Collector (通过 Nginx)
+```
+
+## 域名接入
+
+如需通过域名访问（如 `your-custom-domain.com` → `http://localhost`），有两种方式：
+
+### 方式一：上游反向代理（推荐）
+
+在外部部署 Nginx / Cloudflare / haproxy，负责 TLS 终止和域名路由，将请求转发到本机的对应端口：
+
+```nginx
+# 示例：上游 Nginx
+server {
+    listen 443 ssl;
+    server_name your-custom-domain.com;
+    ssl_certificate     /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://<本机IP>:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+server {
+    listen 443 ssl;
+    server_name ai.your-custom-domain.com;
+    ...
+    location / {
+        proxy_pass http://<本机IP>:81;   # AI Gateway
+    }
+}
+server {
+    listen 443 ssl;
+    server_name analytics-your-custom-domain.com;
+    ...
+    location / {
+        proxy_pass http://<本机IP>:82;   # Analytics
+    }
+}
+```
+
+### 方式二：修改 nginx.conf 添加 server_name
+
+在 `config/nginx/nginx.conf` 中为每个端口对应的 server 块添加域名：
+
+```nginx
+server {
+    listen 80;
+    server_name your-custom-domain.com;          # ← Web 应用 (SPA + API)
+    ...
+}
+server {
+    listen 81;
+    server_name ai.your-custom-domain.com;       # ← AI Gateway
+    ...
+}
+server {
+    listen 82;
+    server_name analytics.your-custom-domain.com; # ← Analytics
+    ...
+}
+```
+
+修改后重启生效：
+
+```bash
+docker compose restart saas-app
+```
+
+> **注意**：此方式需自行处理 TLS（SSL 证书）。如需 HTTPS，建议配合 Cloudflare（边缘证书 + DNS 代理）或使用方式一在上游反向代理中终止 TLS。
+
 ## 常用命令
 
 ```bash
