@@ -217,7 +217,7 @@ services:
       pd:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:20160/status"]
+      test: ["CMD", "curl", "-sf", "http://localhost:20180/status"]
       interval: 15s
       timeout: 5s
       retries: 5
