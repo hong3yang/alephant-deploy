@@ -11,6 +11,9 @@
 #     -f middlewares/valkey.values.yaml
 # =============================================================================
 
+image:
+  tag: 9.0.2
+
 replica:
   enabled: true
   replicas: 0

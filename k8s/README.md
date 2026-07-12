@@ -69,9 +69,9 @@
 | **PostgreSQL** | [CNPG Operator](https://cloudnative-pg.io/) | 使用内部 `cnpg-cluster` chart |
 | **ClickHouse** | [Altinity Operator](https://github.com/Altinity/clickhouse-operator) | 使用内部 `clickhouse-cluster` chart |
 | **Valkey / Redis** | 官方 Helm Chart (valkey/valkey) | |
-| **Qdrant** | 官方 Helm Chart (qdrant/qdrant) | |
-| **TiKV + PD** | TiDB Operator 或手工 StatefulSet | 参见 `../alephantai-tikv.yaml` |
-| **MinIO** | Bitnami Helm Chart (bitnami/minio) | |
+| **Qdrant** | 官方 Helm Chart (qdrant/qdrant) | 单节点需改 `replicaCount: 1` |
+| **TiKV + PD** | StatefulSet 直 deploy | 参见 `middlewares/tikv-pd.yaml` |
+| **MinIO** | 直接 K8s 资源 (pgsty/minio) | 参见 `middlewares/minio-deploy.yaml` |
 
 ### 网络连通性
 
@@ -164,7 +164,7 @@ kubectl get svc -n alephant-prod
 helm repo add weconomy https://helm-charts.weconomy.network
 
 helm upgrade --install alephant-postgres weconomy/cnpg-cluster \
-  --version 0.1.16 \
+  --version 0.1.0 \
   --namespace alephant-prod \
   --create-namespace \
   -f middlewares/postgres.values.yaml
@@ -224,7 +224,7 @@ helm upgrade --install alephant-valkey valkey/valkey \
 
 ### Qdrant (向量数据库)
 
-使用官方 Qdrant Helm Chart 部署 3 节点集群（含内网 API Key 认证）。
+使用官方 Helm Chart 部署。默认 3 节点集群（需 ≥3 个 Worker 节点）。单节点集群请修改 `replicaCount: 1` 并关闭 `config.cluster.enabled`。
 
 ```bash
 helm repo add qdrant https://qdrant.github.io/qdrant-helm/
@@ -246,33 +246,33 @@ helm upgrade --install alephant-prod-qdrant qdrant/qdrant \
 
 ### MinIO (S3 兼容对象存储)
 
-使用 Bitnami MinIO Chart 部署。如需生产高可用，修改 `mode: distributed` 并调整副本数。
-
-> ⚠️ **注意**: Docker Compose 中使用的是 `pgsty/minio:latest` 自定义镜像。
-> 如果业务依赖 `pgsty/minio` 的特性，可以将 values 中的 `mode`/`auth` 替换为直接使用 `pgsty/minio` 镜像（参见 values 文件内的注释）。
+与 Docker Compose 一致，使用 `pgsty/minio` 镜像直接部署（非 Bitnami Chart）。
 
 ```bash
-helm repo add bitnami https://charts.bitnami.com/bitnami
-
-helm upgrade --install alephant-minio bitnami/minio \
-  --namespace alephant-prod \
-  --create-namespace \
-  -f middlewares/minio.values.yaml
+kubectl apply -f middlewares/minio-deploy.yaml
 ```
 
 服务地址:
 - S3 API: `alephant-minio.alephant-prod.svc.cluster.local:9000`
 - Console: `alephant-minio.alephant-prod.svc.cluster.local:9001`
 
-配置参考: [`middlewares/minio.values.yaml`](middlewares/minio.values.yaml)
+配置参考: [`middlewares/minio-deploy.yaml`](middlewares/minio-deploy.yaml)
+
+> 之前使用 Bitnami Chart 遇到镜像拉取失败的问题，改用与 docker-compose 一致的 `pgsty/minio` 镜像即可。如有高可用需求，可改用 MinIO Operator 部署分布式模式。
 
 ---
 
 ### TiKV + PD (分布式 KV 存储)
 
-TiKV + PD 在 Docker Compose 中直接使用 PingCAP 官方镜像启动。K8s 环境可通过 [TiDB Operator](https://docs.pingcap.com/tidb-in-kubernetes/) 部署 TiKV 集群，或手工创建 StatefulSet。
+TiKV + PD 在 Docker Compose 中直接使用 PingCAP 官方镜像启动。K8s 中可通过 StatefulSet 部署。
 
-生产参考 values 参见: `../alephantai-tikv.yaml`
+```bash
+kubectl apply -f middlewares/tikv-pd.yaml
+```
+
+配置参考: [`middlewares/tikv-pd.yaml`](middlewares/tikv-pd.yaml)
+
+> **注意**: alicloud-disk-essd 最小容量为 20Gi，低于此值 PVC 会 provisioning 失败。
 
 服务地址:
 - PD: `pd.alephant-prod.svc.cluster.local:2379`
@@ -376,12 +376,12 @@ curl http://localhost:8080/api/v1/health
 
 | 域名 | 路由路径 | 后端 Service | 说明 |
 |---|---|---|---|
-| **alephant.io** | `/api/v1` | saas-service:8080 | SaaS API |
+| **openmodels.link** | `/api/v1` | saas-service:8080 | SaaS API |
 | | `/v1/policy` | policy-service:8080 | 策略服务 |
 | | `/` | app:80 (SPA) | 前端页面 |
-| **ai.alephant.io** | `/v1` | ai-gateway:8080 | AI 网关 |
-| **analytics.alephant.io** | `/v1` | logs-collector:8585 | 日志分析 |
-| **api.alephant.io** | `/v1` → `/key_market/` (rewrite) | ai-gateway:8080 | API 市场 (带 path rewrite) |
+| **ai.openmodels.link** | `/v1` | ai-gateway:8080 | AI 网关 |
+| **analytics.openmodels.link** | `/v1` | logs-collector:8585 | 日志分析 |
+| **api.openmodels.link** | `/v1` → `/key_market/` (rewrite) | ai-gateway:8080 | API 市场 (带 path rewrite) |
 
 ## 扩缩容
 

@@ -1,0 +1,158 @@
+# =============================================================================
+# Alephant — TiKV + PD 部署 (最小配置，单节点)
+# =============================================================================
+# 生产环境参见: ../alephantai-tikv.yaml
+# =============================================================================
+
+# --- PD Service ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pd
+  namespace: alephant-prod
+  labels:
+    app: pd
+spec:
+  clusterIP: None
+  selector:
+    app: pd
+  ports:
+    - name: client
+      port: 2379
+      targetPort: 2379
+    - name: peer
+      port: 2380
+      targetPort: 2380
+---
+# --- PD StatefulSet ---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pd
+  namespace: alephant-prod
+  labels:
+    app: pd
+spec:
+  serviceName: pd
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pd
+  template:
+    metadata:
+      labels:
+        app: pd
+    spec:
+      imagePullSecrets:
+        - name: alephant-registry-cred
+      containers:
+        - name: pd
+          image: pingcap/pd:v7.5.0
+          command:
+            - /pd-server
+          args:
+            - --name=pd-0
+            - --data-dir=/data
+            - --client-urls=http://0.0.0.0:2379
+            - --peer-urls=http://0.0.0.0:2380
+            - --advertise-client-urls=http://pd-0.pd.alephant-prod.svc.cluster.local:2379
+            - --advertise-peer-urls=http://pd-0.pd.alephant-prod.svc.cluster.local:2380
+            - --initial-cluster=pd-0=http://pd-0.pd.alephant-prod.svc.cluster.local:2380
+          ports:
+            - name: client
+              containerPort: 2379
+            - name: peer
+              containerPort: 2380
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: alicloud-disk-essd
+        resources:
+          requests:
+            storage: 20Gi
+---
+# --- TiKV Service ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tikv
+  namespace: alephant-prod
+  labels:
+    app: tikv
+spec:
+  clusterIP: None
+  selector:
+    app: tikv
+  ports:
+    - name: kv
+      port: 20160
+      targetPort: 20160
+---
+# --- TiKV StatefulSet ---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tikv
+  namespace: alephant-prod
+  labels:
+    app: tikv
+spec:
+  serviceName: tikv
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tikv
+  template:
+    metadata:
+      labels:
+        app: tikv
+    spec:
+      imagePullSecrets:
+        - name: alephant-registry-cred
+      containers:
+        - name: tikv
+          image: pingcap/tikv:v7.5.0
+          command:
+            - /tikv-server
+          args:
+            - --pd-endpoints=pd-0.pd.alephant-prod.svc.cluster.local:2379
+            - --addr=0.0.0.0:20160
+            - --advertise-addr=tikv-0.tikv.alephant-prod.svc.cluster.local:20160
+            - --status-addr=0.0.0.0:20180
+            - --data-dir=/data
+          ports:
+            - name: kv
+              containerPort: 20160
+            - name: status
+              containerPort: 20180
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: alicloud-disk-essd
+        resources:
+          requests:
+            storage: 20Gi

@@ -1,47 +1,90 @@
 # =============================================================================
-# Alephant — MinIO S3 兼容对象存储 部署配置
+# Alephant — MinIO 部署 (兼容 docker-compose 的 pgsty/minio 镜像)
 # =============================================================================
-# Chart: bitnami/minio (Bitnami 官方 Chart)
-#
-# ⚠️ Docker Compose 中使用的是 pgsty/minio:latest 自定义镜像。
-#    如果使用 bitnami/minio，环境变量和默认配置可能有差异。
-#    如需完全一致，可改用 docker-compose 中的 pgsty/minio 镜像：
-#       image.repository: pgsty/minio
-#       image.tag: latest
-#       image.registry: ""
-#
 # 用法:
-#   helm repo add bitnami https://charts.bitnami.com/bitnami
-#   helm upgrade --install alephant-minio bitnami/minio \
-#     --namespace alephant-prod \
-#     --create-namespace \
-#     -f middlewares/minio.values.yaml
-#
-# 生产环境建议启用 mode: distributed 和 ≥4 节点。
+#   kubectl apply -f middlewares/minio-deploy.yaml
 # =============================================================================
-
-mode: standalone
-
-auth:
-  rootUser: admin
-  rootPassword: "CHANGE_ME"               # ← 务必替换
-
-defaultBuckets: alephant
-
-persistence:
-  enabled: true
-  storageClass: alicloud-disk-essd        # ← 按你的集群存储类修改
-  size: 50Gi
-
-resources:
-  requests:
-    cpu: 250m
-    memory: 512Mi
-  limits:
-    cpu: 500m
-    memory: 1Gi
-
-service:
+apiVersion: v1
+kind: Service
+metadata:
+  name: alephant-minio
+  namespace: alephant-prod
+  labels:
+    app: alephant-minio
+spec:
+  type: ClusterIP
   ports:
-    api: 9000
-    console: 9001
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+  selector:
+    app: alephant-minio
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alephant-minio
+  namespace: alephant-prod
+  labels:
+    app: alephant-minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alephant-minio
+  template:
+    metadata:
+      labels:
+        app: alephant-minio
+    spec:
+      imagePullSecrets:
+        - name: alephant-registry-cred
+      containers:
+        - name: minio
+          image: pgsty/minio:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - server
+            - /data
+            - --console-address
+            - :9001
+          ports:
+            - containerPort: 9000
+              name: api
+            - containerPort: 9001
+              name: console
+          env:
+            - name: MINIO_ROOT_USER
+              value: "admin"
+            - name: MINIO_ROOT_PASSWORD
+              value: "minioadmin123"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: alephant-minio
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: alephant-minio
+  namespace: alephant-prod
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: alicloud-disk-essd
+  resources:
+    requests:
+      storage: 50Gi

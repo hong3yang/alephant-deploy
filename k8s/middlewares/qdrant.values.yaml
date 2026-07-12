@@ -11,7 +11,8 @@
 #     -f middlewares/qdrant.values.yaml
 # =============================================================================
 
-replicaCount: 3
+# 单节点模式（适用于测试 / 开发）
+replicaCount: 1
 
 resources:
   requests:
@@ -26,32 +27,8 @@ persistence:
   storageClassName: alicloud-disk-essd    # ← 按你的集群存储类修改
   size: 50Gi
 
-affinity:
-  podAntiAffinity:
-    requiredDuringSchedulingIgnoredDuringExecution:
-      - labelSelector:
-          matchExpressions:
-            - key: app.kubernetes.io/name
-              operator: In
-              values:
-                - qdrant
-            - key: app.kubernetes.io/instance
-              operator: In
-              values:
-                - alephant-prod-qdrant
-        topologyKey: kubernetes.io/hostname
-
-topologySpreadConstraints:
-  - maxSkew: 1
-    topologyKey: kubernetes.io/hostname
-    whenUnsatisfiable: DoNotSchedule
-    labelSelector:
-      matchLabels:
-        app.kubernetes.io/name: qdrant
-        app.kubernetes.io/instance: alephant-prod-qdrant
-
 config:
   cluster:
-    enabled: true
+    enabled: false       # 单节点时关闭集群模式
   service:
-    api_key: "CHANGE_ME"                   # ← 务必替换，与业务服务配置一致
+    api_key: "CHANGE_ME"  # ← 务必替换

@@ -8,11 +8,10 @@ global:
 # ---------------------------------------------------------------------------
 app:
   replicas: 1
-  name: alephantai-app
+  name: alephant-app
   image:
-    repository: alephantai-app
-    tag: 20260712195934
-  spa: true
+    repository: alephant-app
+    tag: "20260712195934"
   # tolerations:                           # 按需取消注释
   #   - key: dedicated
   #     operator: Equal
@@ -27,10 +26,10 @@ app:
 # ---------------------------------------------------------------------------
 saasService:
   replicas: 1
-  name: alephantai-saas-service
+  name: alephant-saas-service
   image:
-    repository: alephantai-saas-service
-    tag: 20260712195945
+    repository: alephant-saas-service
+    tag: "20260712195945"
   # tolerations:
   #   - key: dedicated
   #     operator: Equal
@@ -70,10 +69,10 @@ saasService:
 # ---------------------------------------------------------------------------
 policyService:
   replicas: 1
-  name: alephantai-policy-service
+  name: alephant-policy-service
   image:
-    repository: alephantai-policy-service
-    tag: 20260712195949
+    repository: alephant-policy-service
+    tag: "20260712195949"
   # tolerations:
   #   - key: dedicated
   #     operator: Equal
@@ -97,10 +96,10 @@ policyService:
 # ---------------------------------------------------------------------------
 aiGateway:
   replicas: 1
-  name: alephantai-ai-gateway
+  name: alephant-ai-gateway
   image:
-    repository: alephantai-ai-gateway
-    tag: 20260712194908
+    repository: alephant-ai-gateway
+    tag: "20260712194908"
   # tolerations:
   #   - key: dedicated
   #     operator: Equal
@@ -118,10 +117,10 @@ aiGateway:
 # ---------------------------------------------------------------------------
 logsCollector:
   replicas: 1
-  name: alephantai-logs-collector
+  name: alephant-logs-collector
   image:
-    repository: alephantai-logs-collector
-    tag: 20260712195944
+    repository: alephant-logs-collector
+    tag: "20260712195944"
   # tolerations:
   #   - key: dedicated
   #     operator: Equal
@@ -143,105 +142,105 @@ ingress:
   enabled: false       # 按需开启
   className: ""        # 填入你的 IngressController，如 nginx / haproxy / traefik
   hosts:
-    # --- alephant.io (前端 + SaaS API + 策略) ---
+    # --- openmodels.link (前端 + SaaS API + 策略) ---
     - metadata:
         name: alephant-prod
         annotations:
-          cert-manager.io/cluster-issuer: wechart
+          cert-manager.io/cluster-issuer: openmodels
       spec:
         tls:
           - hosts:
-              - alephant.io
-            secretName: alephant.io
+              - openmodels.link
+            secretName: openmodels.link
         rules:
-          - host: alephant.io
+          - host: openmodels.link
             http:
               paths:
                 - path: /api/v1
                   pathType: Prefix
                   backend:
                     service:
-                      name: alephantai-saas-service
+                      name: alephant-saas-service
                       port:
                         number: 8080
                 - path: /v1/policy
                   pathType: Prefix
                   backend:
                     service:
-                      name: alephantai-policy-service
+                      name: alephant-policy-service
                       port:
                         number: 8080
                 - path: /
                   pathType: Prefix
                   backend:
                     service:
-                      name: alephantai-app
+                      name: alephant-app
                       port:
                         number: 80
 
-    # --- ai.alephant.io (AI 网关) ---
+    # --- ai.openmodels.link (AI 网关) ---
     - metadata:
         name: alephant-ai-gateway
         annotations:
-          cert-manager.io/cluster-issuer: wechart
+          cert-manager.io/cluster-issuer: openmodels
       spec:
         tls:
           - hosts:
-              - ai.alephant.io
-            secretName: ai.alephant.io
+              - ai.openmodels.link
+            secretName: ai.openmodels.link
         rules:
-          - host: ai.alephant.io
+          - host: ai.openmodels.link
             http:
               paths:
                 - path: /v1
                   pathType: Prefix
                   backend:
                     service:
-                      name: alephantai-ai-gateway
+                      name: alephant-ai-gateway
                       port:
                         number: 8080
 
-    # --- analytics.alephant.io (日志分析) ---
+    # --- analytics.openmodels.link (日志分析) ---
     - metadata:
         name: alephant-analytics
         annotations:
-          cert-manager.io/cluster-issuer: wechart
+          cert-manager.io/cluster-issuer: openmodels
       spec:
         tls:
           - hosts:
-              - analytics.alephant.io
-            secretName: analytics.alephant.io
+              - analytics.openmodels.link
+            secretName: analytics.openmodels.link
         rules:
-          - host: analytics.alephant.io
+          - host: analytics.openmodels.link
             http:
               paths:
                 - path: /v1
                   pathType: Prefix
                   backend:
                     service:
-                      name: alephantai-logs-collector
+                      name: alephant-logs-collector
                       port:
                         number: 8585
 
-    # --- api.alephant.io (带 path-rewrite 的 AI 网关) ---
+    # --- api.openmodels.link (带 path-rewrite 的 AI 网关) ---
     - metadata:
         name: api-alephant
         annotations:
-          cert-manager.io/cluster-issuer: wechart
+          cert-manager.io/cluster-issuer: openmodels
           haproxy.org/path-rewrite: /v1/(.*) /key_market/\1
       spec:
         tls:
           - hosts:
-              - api.alephant.io
-            secretName: api.alephant.io
+              - api.openmodels.link
+            secretName: api.openmodels.link
         rules:
-          - host: api.alephant.io
+          - host: api.openmodels.link
             http:
               paths:
                 - path: /v1
                   pathType: Prefix
                   backend:
                     service:
-                      name: alephantai-ai-gateway
+                      name: alephant-ai-gateway
                       port:
                         number: 8080

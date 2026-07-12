@@ -4,7 +4,7 @@
 # Chart: weconomy/cnpg-cluster (内部 Chart)
 # 用法:
 #   helm upgrade --install alephant-postgres weconomy/cnpg-cluster \
-#     --version 0.1.16 \
+#     --version 0.1.0 \
 #     --namespace alephant-prod \
 #     --create-namespace \
 #     -f middlewares/postgres.values.yaml
