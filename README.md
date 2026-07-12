@@ -44,6 +44,45 @@ openssl version
 curl --version || wget --version
 ```
 
+## License 激活
+
+Alephant 私有化部署需要有效的 License 文件进行授权验证。
+
+### 首次激活
+
+1. 联系 Alephant 团队获取 `license.jwt` 文件
+2. 将文件内容复制到 `license/license.jwt`：
+
+```bash
+# 将获取到的 JWT 内容写入文件
+cat > license/license.jwt << 'EOF'
+eyJhbGciOiJSUzI1NiIs...
+...
+EOF
+```
+
+3. 设置工作空间拥有者邮箱（**必填**），在 `infra.env` 或启动前 export：
+
+```bash
+export PRIVATE_WORKSPACE_OWNER_EMAILS="admin@example.com"
+```
+
+4. 启动服务后，系统会自动验证 License 有效性
+
+### 更新 License
+
+如需续期或更换 License：
+
+```bash
+# 覆盖原有文件
+cat > license/license.jwt << 'EOF'
+<新的 JWT 内容>
+EOF
+
+# 重启 saas-service 使其生效
+docker compose restart saas-service
+```
+
 ## 服务
 
 | 服务 | 说明 | 端口 |
@@ -172,3 +211,9 @@ bash start.sh                        # 重新部署
 cat infra.env          # 基础设施密码
 cat saas-service.env   # SaaS 后端配置
 ```
+
+### 额外环境变量
+
+| 变量名 | 说明 | 必填 |
+|---|---|---|
+| `PRIVATE_WORKSPACE_OWNER_EMAILS` | 工作空间拥有者邮箱，多个用逗号分隔（例: `admin@example.com,user2@example.com`） | **是** |

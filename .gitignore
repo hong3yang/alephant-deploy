@@ -1,3 +1,4 @@
 .env
 *.env
 .downloaded-images/
+license/license.jwt

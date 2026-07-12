@@ -310,6 +310,11 @@ services:
       - "127.0.0.1:8081:8080"
     env_file:
       - saas-service.env
+    volumes:
+      - ./license/license.jwt:/etc/alephant/license/license.jwt:ro
+    environment:
+      ALEPHANT_LICENSE_FILE: /etc/alephant/license/license.jwt
+      PRIVATE_WORKSPACE_OWNER_EMAILS: "${PRIVATE_WORKSPACE_OWNER_EMAILS:-}"
 
   # ---------------------------------------------------------------------------
   # 策略后端
