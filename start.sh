@@ -239,6 +239,20 @@ LOGS_COLLECTOR_X402_HTTP_AUTH_TOKEN=${LOGS_COLLECTOR_X402_HTTP_AUTH_TOKEN}
 ANALYTICS_RMT_MAX_RANGE_HOURS=72
 EOF
 
+  # ── 7. app.env (给 saas-app 的环境变量，SPA 可通过 _env 接口读取) ──
+  info "  生成 app.env"
+  cat > "${COMPOSE_DIR}/app.env" << EOF
+# ===========================================================================
+# app.env — 由 start.sh 自动生成
+# SPA 前端通过 GET /_env 获取 API_BASE_URL 和 COLLECTOR_BASE_URL
+# 生产部署时应根据实际域名修改:
+#   API_BASE_URL      = https://your-domain.com
+#   COLLECTOR_BASE_URL = https://analytics.your-domain.com
+# ===========================================================================
+API_BASE_URL=${API_BASE_URL:-http://localhost}
+COLLECTOR_BASE_URL=${COLLECTOR_BASE_URL:-http://localhost:82}
+EOF
+
   ok "环境变量文件已生成"
   info "  PostgreSQL 密码: ${POSTGRES_PASSWORD}"
   info "  Valkey 密码:     ${VALKEY_PASSWORD}"

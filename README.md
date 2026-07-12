@@ -216,6 +216,33 @@ docker compose restart saas-app
 
 > **注意**：此方式需自行处理 TLS（SSL 证书）。如需 HTTPS，建议配合 Cloudflare（边缘证书 + DNS 代理）或使用方式一在上游反向代理中终止 TLS。
 
+## 自定义前端 API 地址
+
+SPA 前端通过 `GET /_env` 获取后端 API 地址，由 `app.env` 中的两个变量控制：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `API_BASE_URL` | `http://localhost` | SaaS 后端 API 地址 |
+| `COLLECTOR_BASE_URL` | `http://localhost:82` | 日志/分析 API 地址 |
+
+生产部署时根据实际域名修改 `app.env` 然后重启 saas-app：
+
+```bash
+vim app.env
+# API_BASE_URL=https://your-domain.com
+# COLLECTOR_BASE_URL=https://analytics.your-domain.com
+
+docker compose restart saas-app
+```
+
+或运行 start.sh 时覆盖：
+
+```bash
+API_BASE_URL=https://your-domain.com \
+COLLECTOR_BASE_URL=https://analytics.your-domain.com \
+bash start.sh
+```
+
 ## 常用命令
 
 ```bash

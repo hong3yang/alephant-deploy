@@ -276,7 +276,9 @@ services:
     restart: unless-stopped
     networks:
       - alephant-net
-    
+    env_file:
+      - app.env
+
 
   # ---------------------------------------------------------------------------
   # SaaS 后端
