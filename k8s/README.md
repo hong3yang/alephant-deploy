@@ -105,21 +105,13 @@ helm upgrade --install alephant-prod weconomy/common \
 
 ### 2. 创建 Secrets
 
-业务服务的环境变量通过 K8s Secret 注入。部署前需要创建以下 4 个 Secret：
+运行自动生成脚本：
 
 ```bash
-# 创建 saasService 环境变量 Secret
-kubectl create secret generic alephant-saas-service-secrets \
-  --from-literal=DATABASE_URL=postgresql://alephant:xxx@alephant-postgres-rw:5432/alephant \
-  --from-literal=REDIS_URL=redis://default:xxx@alephant-valkey:6379/0 \
-  --from-literal=JWT_SECRET=xxx \
-  --from-literal=MASTER_KEY=xxx \
-  --namespace alephant-prod
-
-# 其他服务的 Secret 同理，见下方 Secrets 管理章节
+bash k8s/generate-secrets.sh
 ```
 
-> 各 Secret 所需的完整环境变量列表，参考 Docker Compose 的对应 `.env` 文件（`saas-service.env`、`policy-service.env`、`ai-gateway.env`、`logs-collector.env`），或由 Infisical / External Secrets Operator 自动同步。
+脚本会随机生成所有密码/密钥并创建 4 个 Secret。详见 [Secrets 管理](#secrets-管理) 章节。
 
 ### 3. （可选）启用 Ingress
 
@@ -278,18 +270,25 @@ kubectl apply -f middlewares/tikv-pd.yaml
 
 ---
 
+
 ## Secrets 管理
 
-Secret 命名规范：
+业务服务的环境变量通过 K8s Secret 注入。使用自动生成脚本创建：
 
-| Secret 名称 | 对应服务 |
+```bash
+bash k8s/generate-secrets.sh
+```
+
+脚本会自动生成随机密码/密钥并创建以下 4 个 Secret：
+
+| Secret 名称 | 对应服务 | 对应 docker-compose 文件 |
 |---|---|---|
-| `alephant-saas-service-secrets` | saasService |
-| `alephant-policy-service-secrets` | policyService |
-| `alephant-ai-gateway-secrets` | aiGateway |
-| `alephant-logs-collector-secrets` | logsCollector |
+| `alephant-saas-service-secrets` | saasService | `saas-service.env` |
+| `alephant-policy-service-secrets` | policyService | `policy-service.env` |
+| `alephant-ai-gateway-secrets` | aiGateway | `ai-gateway.env` |
+| `alephant-logs-collector-secrets` | logsCollector | `logs-collector.env` |
 
-在 `values.yaml` 中通过 `envFrom` 引用这些 Secret，将所有键值对注入为环境变量：
+在 `values.yaml` 中通过 `envFrom` 引用这些 Secret：
 
 ```yaml
 saasService:
