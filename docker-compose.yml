@@ -286,7 +286,7 @@ services:
       - policy-service
       - ai-gateway
       - logs-collector
-    image: ${APP_IMAGE:-registry.digitalocean.com/wechart/alephantai-app:20260613081608}
+    image: ${APP_IMAGE:-registry.openmodels.link/alephant/alephantai-app:20260712195934}
     container_name: alephant-app
     restart: unless-stopped
     networks:
@@ -301,7 +301,7 @@ services:
   # SaaS 后端
   # ---------------------------------------------------------------------------
   saas-service:
-    image: ${SAAS_SERVICE_IMAGE:-registry.digitalocean.com/wechart/alephantai-saas-service:20260629121515}
+    image: ${SAAS_SERVICE_IMAGE:-registry.openmodels.link/alephant/alephantai-saas-service:20260712195945}
     container_name: alephant-saas-service
     restart: unless-stopped
     networks:
@@ -315,7 +315,7 @@ services:
   # 策略后端
   # ---------------------------------------------------------------------------
   policy-service:
-    image: ${POLICY_SERVICE_IMAGE:-registry.digitalocean.com/wechart/alephantai-policy-service:20260613220845}
+    image: ${POLICY_SERVICE_IMAGE:-registry.openmodels.link/alephant/alephantai-policy-service:20260712195949}
     container_name: alephant-policy-service
     restart: unless-stopped
     networks:
@@ -333,7 +333,7 @@ services:
       - pd
       - tikv
       - minio
-    image: ${AI_GATEWAY_IMAGE:-registry.digitalocean.com/wechart/alephantai-ai-gateway:20260629120913}
+    image: ${AI_GATEWAY_IMAGE:-registry.openmodels.link/alephant/alephantai-ai-gateway:20260712194908}
     container_name: alephant-ai-gateway
     restart: unless-stopped
     networks:
@@ -347,7 +347,7 @@ services:
   # Logs Collector
   # ---------------------------------------------------------------------------
   logs-collector:
-    image: ${LOGS_COLLECTOR_IMAGE:-registry.digitalocean.com/wechart/alephantai-logs-collector:20260618231935}
+    image: ${LOGS_COLLECTOR_IMAGE:-registry.openmodels.link/alephant/alephantai-logs-collector:20260712195944}
     container_name: alephant-logs-collector
     restart: unless-stopped
     networks:
