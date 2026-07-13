@@ -266,6 +266,7 @@ services:
   # 不覆盖 nginx.conf，不直接暴露端口，由 gateway 统一代理
   # ---------------------------------------------------------------------------
   saas-app:
+    platform: linux/amd64
     depends_on:
       - saas-service
       - policy-service
@@ -284,6 +285,7 @@ services:
   # SaaS 后端
   # ---------------------------------------------------------------------------
   saas-service:
+    platform: linux/amd64
     image: ${SAAS_SERVICE_IMAGE:-registry.openmodels.link/alephant/alephant-saas-service:20260712195945}
     container_name: alephant-saas-service
     restart: unless-stopped
@@ -301,6 +303,7 @@ services:
   # 策略后端
   # ---------------------------------------------------------------------------
   policy-service:
+    platform: linux/amd64
     image: ${POLICY_SERVICE_IMAGE:-registry.openmodels.link/alephant/alephant-policy-service:20260712195949}
     container_name: alephant-policy-service
     restart: unless-stopped
@@ -313,6 +316,7 @@ services:
   # AI Gateway
   # ---------------------------------------------------------------------------
   ai-gateway:
+    platform: linux/amd64
     depends_on:
       - pd
       - tikv
@@ -329,6 +333,7 @@ services:
   # Logs Collector
   # ---------------------------------------------------------------------------
   logs-collector:
+    platform: linux/amd64
     image: ${LOGS_COLLECTOR_IMAGE:-registry.openmodels.link/alephant/alephant-logs-collector:20260712195944}
     container_name: alephant-logs-collector
     restart: unless-stopped
