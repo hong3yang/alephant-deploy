@@ -93,12 +93,14 @@ collect_license() {
   done
 
   # ── 2. license.jwt ──
-  local LICENSE_DIR="${SCRIPT_DIR}/k8s/license"
-  mkdir -p "${LICENSE_DIR}"
+  local LICENSE_DIR="${SCRIPT_DIR}/license"
+  if [ ! -d "${LICENSE_DIR}" ]; then
+    mkdir -p "${LICENSE_DIR}"
+  fi
 
   if [ -f "${LICENSE_DIR}/license.jwt" ] && [ -s "${LICENSE_DIR}/license.jwt" ]; then
     local OVERWRITE
-    read -r -p "  k8s/license/license.jwt 已存在，是否覆盖? (y/N): " OVERWRITE
+    read -r -p "  license/license.jwt 已存在，是否覆盖? (y/N): " OVERWRITE
     if [[ ! "${OVERWRITE}" =~ ^[Yy]$ ]]; then
       ok "保留已有 license.jwt"
     else
@@ -266,25 +268,27 @@ create_all_configmaps() {
   info "创建 ConfigMap..."
 
   # 1. alephant-license-config — license.jwt + 拥有者邮箱
-  local LICENSE_DIR="${SCRIPT_DIR}/k8s/license"
+  local LICENSE_DIR="${SCRIPT_DIR}/license"
   if [ -f "${LICENSE_DIR}/license.jwt" ]; then
+    kubectl delete configmap --namespace "${NAMESPACE}" alephant-license-config --ignore-not-found &>/dev/null
     kubectl create configmap alephant-license-config \
       --namespace "${NAMESPACE}" \
       --from-file=license.jwt="${LICENSE_DIR}/license.jwt" \
       --from-literal=PRIVATE_WORKSPACE_OWNER_EMAILS="${PRIVATE_WORKSPACE_OWNER_EMAILS:-}" \
-      --dry-run=client -o yaml | kubectl apply -f -
+      --save-config=false 2>&1 | grep -v "Warning:" || true
     ok "  ConfigMap alephant-license-config 已创建"
   else
     warn "  license.jwt 不存在，跳过 alephant-license-config"
   fi
 
-  # 2. alephant-sql-config — 共享 SQL 文件
+  # 2. alephant-sql-config — SQL 文件
+  kubectl delete configmap --namespace "${NAMESPACE}" alephant-sql-config --ignore-not-found &>/dev/null
   kubectl create configmap alephant-sql-config \
     --namespace "${NAMESPACE}" \
     --from-file=pgsql.sql="${SCRIPT_DIR}/sql/pgsql.sql" \
     --from-file=clickhouse.sql="${SCRIPT_DIR}/sql/clickhouse.sql" \
-    --dry-run=client -o yaml | kubectl apply -f -
-  ok "  ConfigMap alephant-sql-config 已创建 (pgsql.sql + clickhouse.sql)"
+    --save-config=false 2>&1 | grep -v "Warning:" || true
+  ok "  ConfigMap alephant-sql-config 已创建"
 
   ok "ConfigMap 创建完成"
 }
@@ -320,7 +324,7 @@ init_databases() {
     ok "  数据库已有 ${TABLE_COUNT} 张表，跳过初始化"
   else
     info "  导入 pgsql.sql..."
-    kubectl exec -n "${NAMESPACE}" -i "${PG_POD}" -- psql -U alephant -d alephant < "${SCRIPT_DIR}/sql/pgsql.sql" 2>&1 | grep -E "ERROR|CREATE TABLE|INSERT" || true
+    kubectl exec -n "${NAMESPACE}" -i "${PG_POD}" -- bash -c "PGPASSWORD='${POSTGRES_PASSWORD}' psql -U alephant -h localhost -d alephant" < "${SCRIPT_DIR}/sql/pgsql.sql" 2>&1 | grep -E "ERROR|CREATE TABLE|INSERT" || true
     ok "  pgsql.sql 导入完成"
   fi
 
