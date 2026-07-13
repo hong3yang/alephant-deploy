@@ -9709,14 +9709,15 @@ ALTER TABLE ONLY public.x402_workspace_spend_ceilings
 
 
 
-CREATE TABLE workspace_invitations (
+CREATE TABLE public.workspace_invitations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  workspace_id UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
-  role workspace_member_role_enum NOT NULL,
+  role public.workspace_member_role_enum NOT NULL,
   invited_by UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
   token_hash BYTEA UNIQUE NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'revoked', 'expired')),
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'accepted', 'revoked', 'expired')),
   expires_at TIMESTAMPTZ NOT NULL,
   accepted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -9724,14 +9725,13 @@ CREATE TABLE workspace_invitations (
   CONSTRAINT workspace_invitations_role_not_owner CHECK (role <> 'owner')
 );
 
-CREATE UNIQUE INDEX uq_workspace_invitations_pending_email
-  ON workspace_invitations (workspace_id, email)
+CREATE UNIQUE INDEX public.uq_workspace_invitations_pending_email
+  ON public.workspace_invitations (workspace_id, email)
   WHERE status = 'pending';
 
-CREATE INDEX idx_workspace_invitations_workspace_pending
-  ON workspace_invitations (workspace_id, expires_at)
+CREATE INDEX public.idx_workspace_invitations_workspace_pending
+  ON public.workspace_invitations (workspace_id, expires_at)
   WHERE status = 'pending';
-
 
 
 SET statement_timeout = 0;
