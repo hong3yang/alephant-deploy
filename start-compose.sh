@@ -297,6 +297,7 @@ EOF
 #   COLLECTOR_BASE_URL = https://analytics.your-domain.com
 # ===========================================================================
 API_BASE_URL=${API_BASE_URL:-http://localhost}
+GATEWAY_BASE_URL=${GATEWAY_BASE_URL:-http://localhost:81}
 COLLECTOR_BASE_URL=${COLLECTOR_BASE_URL:-http://localhost:82}
 EOF
 
