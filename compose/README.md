@@ -655,9 +655,9 @@ docker ps -a
 - [ ] VK 大模型请求成功
 - [ ] 统计数据和日志记录正常
 
-
 ## 6. 联系方式
 
 - X：<https://x.com/openmodelsai>
 - Discord：<https://discord.com/invite/tRQghcXhaH>
 - Wechat: hong3yang
+- Email：dev@alephant.io
