@@ -34,7 +34,6 @@
 
 网络访问要求：
 
-- 业务镜像下载地址：<https://image-exports.alephant.io/alephant>
 - 中间件镜像来源：Docker Hub（`docker.io`）
 
 ### 1.4 部署依赖
@@ -45,7 +44,6 @@
 | `openssl` | 任意版本 | 用于生成随机密码和密钥 |
 | `curl` 或 `wget` | 任意版本 | 用于从 S3 下载业务镜像 |
 | `bash` | `≥ 4.x` | 用于运行部署脚本；macOS 需要通过 Homebrew 安装或升级 Bash |
-| `nginx` | 任意版本 | docker环境不提供宿主机外访问，外部访问需要使用nginx转发到指定端口或您的域名 |
 
 ## 2. 部署前准备
 
@@ -62,16 +60,11 @@
 
 ### 2.3 准备访问入口
 
+确认80，81，82端口未被占用，若要修改端口请更新`compose/config/nginx/nginx.conf`
+
 建议使用访问域名作为 Alephant 的外部访问入口，并根据实际域名配置前端、网关 和 日志地址。
-如果暂不配置域名，则需要准备三个外部访问端口，分别对应 Alephant 的三个服务入口（例如）：
-
-| 访问方式 | 外部端口 | 代理目标端口 |
-| --- | --- | --- |
-| 前端或主服务入口 | `28080` | `127.0.0.1:80` |
-| Gateway 服务 | `28081` | `127.0.0.1:81` |
-| Collector 服务 | `28082` | `127.0.0.1:82` |
-
-具体域名或端口应在部署前确定，并同步配置 Nginx 及 `compose/app.env`。
+测试阶段可以直接通过80，81，82端口访问
+具体域名或端口应在部署前确定，并同步配置`compose/app.env`。
 
 ### 2.5 准备检查清单
 
@@ -353,163 +346,6 @@ docker compose up -d
 - 执行完成后，应使用 `docker ps -a` 检查容器状态，并查看日志确认服务启动正常。
 - 如果配置修改未生效，应检查实际加载的 `.env` 文件、Compose 文件和环境变量覆盖关系。
 
-### 3.7 步骤 7：安装并配置 Nginx 外部访问路径
-
-#### 操作目的
-安装 Nginx，并通过反向代理将外部访问端口映射到 Alephant 服务的内部端口 `80`、`81` 和 `82`。
-
-#### 操作内容
-
-Nginx 的具体安装命令需根据服务器操作系统确认
-
-```bash 
-# Ubuntu / Debian
-sudo apt update && sudo apt install -y nginx
-
-# CentOS / RHEL / Fedora
-sudo dnf install -y nginx
-
-# macOS（需要 Homebrew）
-brew install nginx
-
-```
-
-安装完成后，在 Nginx 配置文件中增加以下反向代理server配置(示例)，需放到nginx配置文件目录的conf.d文件夹中：
-
-```nginx
-server {
-   listen 28080;
-   listen [::]:28080;
-   server_name _;
-
-
-   location / {
-       add_header Access-Control-Allow-Origin $cors_origin always;
-       add_header Access-Control-Allow-Credentials "true" always;
-       add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
-       add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-Workspace-Id, X-CSRF-Token, X-Request-Id, Idempotency-Key, Accept, Accept-Language, Cache-Control, X-Alephant-Agent, X-Alephant-Run-Id" always;
-       add_header Access-Control-Expose-Headers "Content-Length, Content-Type, X-Request-Id, X-RateLimit-Reset" always;
-       add_header Vary "Origin" always;
-
-
-       if ($request_method = OPTIONS) {
-           return 204;
-       }
-
-
-       proxy_pass http://127.0.0.1:80;
-       proxy_http_version 1.1;
-       proxy_set_header Host $http_host;
-       proxy_set_header X-Forwarded-Host $http_host;
-       proxy_set_header X-Real-IP $remote_addr;
-       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-       proxy_set_header X-Forwarded-Proto $scheme;
-       proxy_set_header Origin "";
-       proxy_set_header Referer "";
-   }
-}
-
-
-server {
-   listen 28081;
-   listen [::]:28081;
-   server_name _;
-
-
-   location / {
-       add_header Access-Control-Allow-Origin $cors_origin always;
-       add_header Access-Control-Allow-Credentials "true" always;
-       add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
-       add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-Workspace-Id, X-CSRF-Token, X-Request-Id, Idempotency-Key, Accept, Accept-Language, Cache-Control, X-Alephant-Agent, X-Alephant-Run-Id" always;
-       add_header Access-Control-Expose-Headers "Content-Length, Content-Type, X-Request-Id, X-RateLimit-Reset" always;
-       add_header Vary "Origin" always;
-
-
-       if ($request_method = OPTIONS) {
-           return 204;
-       }
-
-
-       proxy_pass http://127.0.0.1:81;
-       proxy_http_version 1.1;
-       proxy_set_header Host $http_host;
-       proxy_set_header X-Forwarded-Host $http_host;
-       proxy_set_header X-Real-IP $remote_addr;
-       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-       proxy_set_header X-Forwarded-Proto $scheme;
-       proxy_set_header Origin "";
-       proxy_set_header Referer "";
-   }
-}
-
-
-server {
-   listen 28082;
-   listen [::]:28082;
-   server_name _;
-
-
-   location / {
-       add_header Access-Control-Allow-Origin $cors_origin always;
-       add_header Access-Control-Allow-Credentials "true" always;
-       add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
-       add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-Workspace-Id, X-CSRF-Token, X-Request-Id, Idempotency-Key, Accept, Accept-Language, Cache-Control, X-Alephant-Agent, X-Alephant-Run-Id" always;
-       add_header Access-Control-Expose-Headers "Content-Length, Content-Type, X-Request-Id, X-RateLimit-Reset" always;
-       add_header Vary "Origin" always;
-
-
-       if ($request_method = OPTIONS) {
-           return 204;
-       }
-
-
-       proxy_pass http://127.0.0.1:82;
-       proxy_http_version 1.1;
-       proxy_set_header Host $http_host;
-       proxy_set_header X-Forwarded-Host $http_host;
-       proxy_set_header X-Real-IP $remote_addr;
-       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-       proxy_set_header X-Forwarded-Proto $scheme;
-       proxy_set_header Origin "";
-       proxy_set_header Referer "";
-   }
-}
-```
-
-#### 端口映射关系
-
-| 外部访问端口 | 代理目标端口 | 用途 |
-| --- | --- | --- |
-| `28080` | `127.0.0.1:80` | Alephant 前端或主服务入口 |
-| `28081` | `127.0.0.1:81` | Gateway 服务 |
-| `28082` | `127.0.0.1:82` | Collector 服务 |
-
-
-#### 配置说明
-
-- 每个 `server` 块负责一个外部端口到内部端口的反向代理。
-- `OPTIONS` 请求直接返回 `204`，用于处理跨域预检请求。
-- `Access-Control-*` 响应头用于配置跨域访问策略。
-- `proxy_set_header` 用于向后端传递原始主机、客户端 IP、转发链路和访问协议等信息。
-- 配置中使用了 `$cors_origin` 变量，需要确认 Nginx 的其他配置中已经定义该变量及其允许来源规则。
-
-#### 配置生效与验证
-
-完成配置后，应先检查 Nginx 配置语法，再重新加载 Nginx，并验证外部端口访问情况。
-```
-# 测试nginx 配置文件格式是否正确
-nginx -t
-
-sudo nginx -t
-```
-
-#### 注意事项
-
-- 外部端口需要在服务器防火墙、安全组或云平台网络策略中放行。
-- 确认 `28080`、`28081`、`28082` 未被其他进程占用。
-- 生产环境不应直接使用示例中的开放策略，需根据实际前端域名配置允许的 CORS 来源。
-- Nginx 监听端口、`proxy_pass` 目标端口和 `compose/app.env` 中配置的访问地址必须保持一致。
-
 ### 3.8 步骤 8：注册超级管理员账号
 
 #### 操作目的
@@ -517,6 +353,8 @@ sudo nginx -t
 通过 Alephant 网站的账号注册功能，使用部署时提供的超级管理员邮箱注册首个管理账号。
 
 #### 操作内容
+
+访问配置的API_BASE_URL，（例如本机访问：http://127.0.0.1检查是否打开页面）
 
 1. 打开部署完成后的 Alephant 网站。
 2. 在登录页面点击“免费注册”。
