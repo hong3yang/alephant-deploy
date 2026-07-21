@@ -136,7 +136,7 @@ Docker Compose 会启动 13 个服务，所有服务默认加入 `alephant-net` 
 
 ```bash
 cd alephant-deploy
-bash start-compose.sh
+sudo bash start-compose.sh
 ```
 
 #### 操作结果
@@ -168,6 +168,13 @@ bash start-compose.sh
 - 输入 JWT 文件内容时，应确保内容来自 Alephant 管理端生成的完整文件，避免遗漏或混入其他字符。
 - `Ctrl+D` 用于结束多行 JWT 内容输入并确认保存，请按提示完成操作。
 
+#### 常见问题
+1、 镜像拉取报错（如图）
+    1.未执行Alephant 业务镜像仓库授权命令，授权命令在jwt下发邮箱中
+    2.授权命令带sudo执行
+![alt text](image-5.png)
+
+
 ### 3.3 步骤 3：等待初始化完成并检查容器状态
 
 #### 操作目的
@@ -185,7 +192,7 @@ bash start-compose.sh
 初始化完成后，执行以下命令检查全部容器状态：
 
 ```bash
-docker ps -a
+sudo docker ps -a
 ```
 
 
@@ -341,7 +348,7 @@ AI_GATEWAY_DEBUG_BODY=true
 配置生效后，可通过以下命令实时查看容器日志：
 
 ```bash
-docker logs -f alephant-ai-gateway
+sudo docker logs -f alephant-ai-gateway
 ```
 
 生产环境建议关闭上述日志配置，避免输出敏感请求信息并增加日志量。
@@ -370,8 +377,8 @@ docker logs -f alephant-ai-gateway
 
 ```bash
 cd compose
-docker compose down
-docker compose up -d
+sudo docker compose down
+sudo docker compose up -d
 ```
 
 #### 操作结果
@@ -507,7 +514,7 @@ docker compose up -d
 执行：
 
 ```bash
-docker ps -a
+sudo docker ps -a
 ```
 
 确认所有 Alephant 相关容器均处于 `Up` 状态，配置健康检查的容器显示 `healthy`，且没有容器处于 `Exited` 或 `Restarting` 状态。
