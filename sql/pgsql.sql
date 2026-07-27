@@ -10592,6 +10592,70 @@ WHERE model.provider_id = 'db1cbfcb-8d6d-4a55-9ddb-c1e638738b38'::uuid;
 COMMIT;
 
 
+
+CREATE TABLE projects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  deleted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX uq_projects_workspace_name
+  ON projects (workspace_id, lower(name))
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX idx_projects_workspace
+  ON projects (workspace_id, updated_at DESC)
+  WHERE deleted_at IS NULL;
+
+ALTER TABLE agents
+  ADD COLUMN project_id UUID REFERENCES projects(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_agents_workspace_project
+  ON agents (workspace_id, project_id);
+
+ALTER TABLE members
+  ADD COLUMN project_id UUID REFERENCES projects(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_members_workspace_project
+  ON members (workspace_id, project_id);
+
+CREATE OR REPLACE VIEW v_member_usage AS
+SELECT
+  m.id,
+  m.workspace_id,
+  m.display_name AS name,
+  COALESCE(m.email, ''::varchar(255))::varchar(255) AS email,
+  m.note,
+  vk.key_prefix AS virtual_key_prefix,
+  vk.id AS virtual_key_id,
+  m.monthly_budget_cents,
+  0::BIGINT AS period_spend_cents,
+  0::INTEGER AS period_request_count,
+  m.status,
+  m.created_at,
+  m.department_id,
+  vk.expires_at AS key_expires_at,
+  vk.master_key_id AS master_key_id,
+  vk.expiry_preset AS key_expiry_preset,
+  vk.status AS virtual_key_status,
+  m.role_label AS role_label,
+  m.project_id,
+  p.name AS project_name
+FROM members m
+LEFT JOIN virtual_keys vk ON vk.entity_type = 'member' AND vk.entity_id = m.id AND vk.deleted_at IS NULL
+LEFT JOIN projects p
+  ON p.id = m.project_id
+  AND p.workspace_id = m.workspace_id
+  AND p.deleted_at IS NULL
+WHERE m.deleted_at IS NULL;
+
+ALTER TYPE audit_resource_enum ADD VALUE IF NOT EXISTS 'project';
+
+
 --
 -- PostgreSQL database dump complete
 --
