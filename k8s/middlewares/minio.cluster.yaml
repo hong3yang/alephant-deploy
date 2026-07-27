@@ -1,0 +1,133 @@
+# =============================================================================
+# Alephant — MinIO 集群部署配置
+# =============================================================================
+# 用法:
+#   kubectl create secret generic alephant-minio-secret \
+#     --from-literal=MINIO_ROOT_USER="$MINIO_ROOT_USER" \
+#     --from-literal=MINIO_ROOT_PASSWORD="$MINIO_ROOT_PASSWORD" \
+#     -n alephant-prod --dry-run=client -o yaml | kubectl apply -f -
+#   kubectl apply -f k8s/middlewares/minio.cluster.yaml
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: alephant-minio
+  namespace: alephant-prod
+  labels:
+    app: alephant-minio
+spec:
+  type: ClusterIP
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+  selector:
+    app: alephant-minio
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alephant-minio-hl
+  namespace: alephant-prod
+  labels:
+    app: alephant-minio
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+  selector:
+    app: alephant-minio
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: alephant-minio
+  namespace: alephant-prod
+  labels:
+    app: alephant-minio
+spec:
+  serviceName: alephant-minio-hl
+  replicas: 4
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: alephant-minio
+  template:
+    metadata:
+      labels:
+        app: alephant-minio
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: alephant-minio
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: minio
+          image: pgsty/minio:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - server
+            - http://alephant-minio-{0...3}.alephant-minio-hl.alephant-prod.svc.cluster.local/data
+            - --console-address
+            - :9001
+          ports:
+            - containerPort: 9000
+              name: api
+            - containerPort: 9001
+              name: console
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: alephant-minio-secret
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: alephant-minio-secret
+                  key: MINIO_ROOT_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: REPLACE_WITH_CLUSTER_STORAGE_CLASS
+        resources:
+          requests:
+            storage: 100Gi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: alephant-minio
+  namespace: alephant-prod
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: alephant-minio

@@ -1,0 +1,36 @@
+# =============================================================================
+# Alephant — Qdrant 集群部署配置
+# =============================================================================
+# Chart: qdrant/qdrant (官方 Chart)
+# 用法:
+#   helm repo add qdrant https://qdrant.github.io/qdrant-helm/
+#   helm upgrade --install alephant-prod-qdrant qdrant/qdrant \
+#     --version 1.17.1 \
+#     --namespace alephant-prod \
+#     --create-namespace \
+#     -f k8s/middlewares/qdrant.cluster.values.yaml \
+#     --set-string config.service.api_key="$QDRANT_API_KEY"
+# =============================================================================
+
+replicaCount: 3
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+persistence:
+  enabled: true
+  # 部署前替换为实际集群 StorageClass，不能使用单节点 local-path。
+  storageClassName: REPLACE_WITH_CLUSTER_STORAGE_CLASS
+  size: 50Gi
+
+config:
+  cluster:
+    enabled: true
+  service:
+    # 真实 API Key 通过 Helm --set-string config.service.api_key="$QDRANT_API_KEY" 注入。
+    api_key: "CHANGE_ME"

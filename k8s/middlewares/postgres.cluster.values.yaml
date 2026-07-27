@@ -1,0 +1,43 @@
+# =============================================================================
+# Alephant — PostgreSQL 集群部署配置
+# =============================================================================
+# Chart: weconomy/cnpg-cluster (内部 Chart)
+# 用法:
+#   helm upgrade --install alephant-postgres weconomy/cnpg-cluster \
+#     --version 0.1.0 \
+#     --namespace alephant-prod \
+#     --create-namespace \
+#     -f k8s/middlewares/postgres.cluster.values.yaml
+# =============================================================================
+
+instances: 3
+
+image:
+  repository: ghcr.io/cloudnative-pg/postgresql
+  tag: "18.3"
+
+postgresql:
+  minSyncReplicas: 1
+  maxSyncReplicas: 2
+
+bootstrap:
+  initdb:
+    database: alephant
+    owner: alephant
+    # 部署前先创建同名 Secret，key 为 username/password，password 需与 start-k8s.sh 的 POSTGRES_PASSWORD 一致。
+    secret: alephant-postgres-app
+
+storage:
+  # 部署前替换为实际集群 StorageClass，不能使用单节点 local-path。
+  storageClass: REPLACE_WITH_CLUSTER_STORAGE_CLASS
+  size: 100Gi
+
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+enablePDB: true

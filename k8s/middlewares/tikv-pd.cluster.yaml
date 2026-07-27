@@ -1,0 +1,212 @@
+# =============================================================================
+# Alephant — TiKV + PD 集群部署配置
+# =============================================================================
+# 生产环境建议优先使用正式 Operator 或托管 TiKV。该文件提供直接
+# StatefulSet 方式的 3 PD + 3 TiKV 基础集群模板。
+# =============================================================================
+
+# --- PD Service ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pd
+  namespace: alephant-prod
+  labels:
+    app: pd
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: pd
+  ports:
+    - name: client
+      port: 2379
+      targetPort: 2379
+    - name: peer
+      port: 2380
+      targetPort: 2380
+---
+# --- PD StatefulSet ---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pd
+  namespace: alephant-prod
+  labels:
+    app: pd
+spec:
+  serviceName: pd
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: pd
+  template:
+    metadata:
+      labels:
+        app: pd
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: pd
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: pd
+          image: pingcap/pd:v7.5.0
+          command:
+            - /pd-server
+          args:
+            - --name=$(POD_NAME)
+            - --data-dir=/data
+            - --client-urls=http://0.0.0.0:2379
+            - --peer-urls=http://0.0.0.0:2380
+            - --advertise-client-urls=http://$(POD_NAME).pd.alephant-prod.svc.cluster.local:2379
+            - --advertise-peer-urls=http://$(POD_NAME).pd.alephant-prod.svc.cluster.local:2380
+            - --initial-cluster=pd-0=http://pd-0.pd.alephant-prod.svc.cluster.local:2380,pd-1=http://pd-1.pd.alephant-prod.svc.cluster.local:2380,pd-2=http://pd-2.pd.alephant-prod.svc.cluster.local:2380
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: client
+              containerPort: 2379
+            - name: peer
+              containerPort: 2380
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: REPLACE_WITH_CLUSTER_STORAGE_CLASS
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pd
+  namespace: alephant-prod
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: pd
+---
+# --- TiKV Service ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tikv
+  namespace: alephant-prod
+  labels:
+    app: tikv
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: tikv
+  ports:
+    - name: kv
+      port: 20160
+      targetPort: 20160
+    - name: status
+      port: 20180
+      targetPort: 20180
+---
+# --- TiKV StatefulSet ---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tikv
+  namespace: alephant-prod
+  labels:
+    app: tikv
+spec:
+  serviceName: tikv
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: tikv
+  template:
+    metadata:
+      labels:
+        app: tikv
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: tikv
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: tikv
+          image: pingcap/tikv:v7.5.0
+          command:
+            - /tikv-server
+          args:
+            - --pd-endpoints=pd-0.pd.alephant-prod.svc.cluster.local:2379,pd-1.pd.alephant-prod.svc.cluster.local:2379,pd-2.pd.alephant-prod.svc.cluster.local:2379
+            - --addr=0.0.0.0:20160
+            - --advertise-addr=$(POD_NAME).tikv.alephant-prod.svc.cluster.local:20160
+            - --status-addr=0.0.0.0:20180
+            - --data-dir=/data
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: kv
+              containerPort: 20160
+            - name: status
+              containerPort: 20180
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: REPLACE_WITH_CLUSTER_STORAGE_CLASS
+        resources:
+          requests:
+            storage: 100Gi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tikv
+  namespace: alephant-prod
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: tikv

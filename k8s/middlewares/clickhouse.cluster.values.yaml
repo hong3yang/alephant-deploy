@@ -1,0 +1,71 @@
+# =============================================================================
+# Alephant — ClickHouse 集群部署配置
+# =============================================================================
+# Chart: weconomy/clickhouse-cluster (内部 Chart, 基于 Altinity Operator)
+# 依赖: 需提前安装 Altinity ClickHouse Operator
+# 用法:
+#   helm upgrade --install alephant-clickhouse weconomy/clickhouse-cluster \
+#     --version 0.1.1 \
+#     --namespace alephant-prod \
+#     --create-namespace \
+#     -f k8s/middlewares/clickhouse.cluster.values.yaml \
+#     --set-string users.default/password="$CLICKHOUSE_PASSWORD"
+# =============================================================================
+
+nameOverride: ch
+
+clickhouse:
+  clusterName: main
+  image:
+    repository: clickhouse/clickhouse-server
+    tag: "25.3"
+  resources:
+    requests:
+      cpu: "1"
+      memory: 4Gi
+    limits:
+      cpu: "4"
+      memory: 8Gi
+  persistence:
+    # 部署前替换为实际集群 StorageClass，不能使用单节点 local-path。
+    storageClassName: REPLACE_WITH_CLUSTER_STORAGE_CLASS
+    size: 200Gi
+
+layout:
+  shardsCount: 1
+  replicasCount: 2
+
+keeper:
+  enabled: true
+  replicas: 3
+  image:
+    repository: clickhouse/clickhouse-keeper
+    tag: "25.3-alpine"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  persistence:
+    # 部署前替换为实际集群 StorageClass，不能使用单节点 local-path。
+    storageClassName: REPLACE_WITH_CLUSTER_STORAGE_CLASS
+    size: 20Gi
+
+# 用户密码通过 Helm --set-string users.default/password="$CLICKHOUSE_PASSWORD" 注入。
+# 不要在仓库文件中写入真实密码。
+users:
+  "default/password": "CHANGE_ME"
+  "default/profile": default
+  "default/quota": default
+  "default/networks/ip":
+    # 部署前建议替换为实际 Kubernetes Pod CIDR 和 Service CIDR。
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+    - "::1"
+    - "127.0.0.1"
+
+pdbMaxUnavailable: 1
+podAntiAffinity: true

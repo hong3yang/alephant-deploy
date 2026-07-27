@@ -82,6 +82,21 @@
 - 中间件 PVC 申请量合计约 39Gi，80G 系统盘可用于部署流程验证
 - 该配置不提供多副本高可用，不适合作为生产配置
 
+### 集群部署配置
+
+仓库同时保留一套集群部署配置，用于多节点 Kubernetes 环境：
+
+| 场景 | 业务配置 | 中间件配置 |
+|---|---|---|
+| 单节点验证 | `k8s/values.yaml` | `k8s/middlewares/*.values.yaml`、`k8s/middlewares/minio.values.yaml`、`k8s/middlewares/tikv-pd.yaml` |
+| 集群部署 | `k8s/values.cluster.yaml` | `k8s/middlewares/*.cluster.values.yaml`、`k8s/middlewares/minio.cluster.yaml`、`k8s/middlewares/tikv-pd.cluster.yaml` |
+
+集群配置按 README 的 Ingress 路由模板启用 HAProxy Ingress，并把业务服务副本数调整为 2。中间件配置调整为 PostgreSQL 3 实例、ClickHouse 2 副本 + Keeper 3 副本、Qdrant 3 副本、Valkey 1 主 2 从、MinIO 4 副本、PD 3 副本、TiKV 3 副本。
+
+部署集群配置前必须把所有 `REPLACE_WITH_CLUSTER_STORAGE_CLASS` 替换成实际集群 StorageClass。不要在多节点集群中使用 `local-path` 承载生产数据。
+
+不要把集群配置直接叠加到已有单节点验证环境。部分资源的部署形态会变化，例如 MinIO 从 Deployment/PVC 切换为 StatefulSet/volumeClaimTemplates，PD/TiKV 从单副本切换为 3 副本。已有数据环境需要先制定迁移或重建方案；新集群建议使用全新 namespace 按集群配置部署。
+
 ### 网络连通性
 
 各业务服务通过 **K8s Service DNS** 访问基础设施，例如：
@@ -119,6 +134,15 @@ export MINIO_ROOT_PASSWORD="<replace-me>"
 
 按 [基础设施部署参考](#基础设施部署参考) 部署 PostgreSQL、ClickHouse、Valkey、Qdrant、MinIO、PD 和 TiKV，并确认所有 Pod Running。
 
+如果使用集群配置，部署前先替换 StorageClass 占位值：
+
+```bash
+export STORAGE_CLASS="<your-cluster-storage-class>"
+grep -R "REPLACE_WITH_CLUSTER_STORAGE_CLASS" k8s/middlewares
+```
+
+确认 StorageClass 后，把集群配置文件中的 `REPLACE_WITH_CLUSTER_STORAGE_CLASS` 替换为实际值，再执行对应的集群部署命令。
+
 ### 3. 创建业务 Secret、ConfigMap 并初始化数据库
 
 ```bash
@@ -138,6 +162,16 @@ helm upgrade --install alephant-prod weconomy/common \
   -f k8s/values.yaml
 ```
 
+集群部署使用：
+
+```bash
+helm upgrade --install alephant-prod weconomy/common \
+  --version 0.1.16 \
+  --namespace "$NAMESPACE" \
+  --create-namespace \
+  -f k8s/values.cluster.yaml
+```
+
 部署前请按实际访问方式确认前端运行时环境变量。仅做 SSH tunnel / port-forward 验证时，可使用当前默认值：
 
 ```yaml
@@ -151,11 +185,11 @@ app:
       value: "http://127.0.0.1:18082"
 ```
 
-如果使用公网域名或 Ingress，需要替换为浏览器可访问的域名地址，例如 `https://your-domain.com`、`https://ai.your-domain.com/v1`、`https://analytics.your-domain.com`。这里不能填写集群内 Service DNS，因为前端代码运行在用户浏览器中。
+如果使用公网域名或 Ingress，需要替换为浏览器可访问的域名地址，例如 `https://your-domain.com`、`https://ai.your-domain.com/v1`、`https://analytics.your-domain.com`。这里不能填写集群内 Service DNS，因为前端代码运行在用户浏览器中。`k8s/values.cluster.yaml` 默认沿用 README 中的 `openmodels.link`、`ai.openmodels.link`、`analytics.openmodels.link` 路由模板，实际部署前请按现场域名调整。
 
 ### 5. （可选）启用 Ingress
 
-编辑 `k8s/values.yaml`，将 `ingress.enabled` 设为 `true`，并填入你的 Ingress Controller `className` 和域名配置。
+单节点验证配置可编辑 `k8s/values.yaml`，将 `ingress.enabled` 设为 `true`，并填入你的 Ingress Controller `className` 和域名配置。集群配置 `k8s/values.cluster.yaml` 已默认启用 Ingress。
 
 ### 6. 验证部署
 
@@ -186,7 +220,7 @@ kubectl get svc -n "$NAMESPACE"
 
 ## 基础设施部署参考
 
-以下基于 k3s 单节点最小验证环境。各中间件的完整 values 配置保存在 `k8s/middlewares/` 目录下，使用 `-f` 引用即可。
+以下默认命令基于 k3s 单节点最小验证环境。各中间件的完整 values 配置保存在 `k8s/middlewares/` 目录下，使用 `-f` 引用即可。集群部署时，把命令中的单节点配置文件替换为对应的 `*.cluster.*` 文件。
 
 ### PostgreSQL (CNPG Operator)
 
@@ -210,12 +244,16 @@ helm upgrade --install alephant-postgres weconomy/cnpg-cluster \
   -f k8s/middlewares/postgres.values.yaml
 ```
 
+集群部署时使用 `k8s/middlewares/postgres.cluster.values.yaml`。
+
 服务地址: `alephant-postgres-rw.alephant-prod.svc.cluster.local:5432`
 数据库: `alephant`，用户: `alephant`
 
 > **部署前请确认**: `POSTGRES_PASSWORD` 与 `alephant-postgres-app` Secret 中的 `password` 一致。
 
-配置参考: [`k8s/middlewares/postgres.values.yaml`](middlewares/postgres.values.yaml)
+配置参考:
+- 单节点验证: [`k8s/middlewares/postgres.values.yaml`](middlewares/postgres.values.yaml)
+- 集群部署: [`k8s/middlewares/postgres.cluster.values.yaml`](middlewares/postgres.cluster.values.yaml)
 
 ---
 
@@ -245,14 +283,18 @@ helm upgrade --install alephant-clickhouse weconomy/clickhouse-cluster \
   --set-string users.default/password="$CLICKHOUSE_PASSWORD"
 ```
 
+集群部署时使用 `k8s/middlewares/clickhouse.cluster.values.yaml`。
+
 > **注意**: 首次部署需先安装 [Altinity ClickHouse Operator](https://github.com/Altinity/clickhouse-operator)。
-> **部署前请确认**: 已导出 `CLICKHOUSE_PASSWORD`。密码通过 Helm `--set-string` 注入，不要把真实密码写入 `k8s/middlewares/clickhouse.values.yaml`。k3s 默认 Pod CIDR 已按 `10.42.0.0/16`、Service CIDR 已按 `10.43.0.0/16` 预置。
+> **部署前请确认**: 已导出 `CLICKHOUSE_PASSWORD`。密码通过 Helm `--set-string` 注入，不要把真实密码写入 `k8s/middlewares/clickhouse.values.yaml`。单节点配置按 k3s 默认 Pod CIDR `10.42.0.0/16`、Service CIDR `10.43.0.0/16` 预置；集群配置部署前建议按实际 Pod CIDR 和 Service CIDR 收窄 `users.default/networks/ip`。
 
 服务地址:
 - HTTP: `clickhouse-ch.alephant-prod.svc.cluster.local:8123`
 - 原生 TCP: `clickhouse-ch.alephant-prod.svc.cluster.local:9000`
 
-配置参考: [`k8s/middlewares/clickhouse.values.yaml`](middlewares/clickhouse.values.yaml)
+配置参考:
+- 单节点验证: [`k8s/middlewares/clickhouse.values.yaml`](middlewares/clickhouse.values.yaml)
+- 集群部署: [`k8s/middlewares/clickhouse.cluster.values.yaml`](middlewares/clickhouse.cluster.values.yaml)
 
 ---
 
@@ -271,11 +313,15 @@ helm upgrade --install alephant-valkey valkey/valkey \
   --set-string auth.aclUsers.default.password="$VALKEY_PASSWORD"
 ```
 
+集群部署时使用 `k8s/middlewares/valkey.cluster.values.yaml`。
+
 服务地址: `alephant-valkey.alephant-prod.svc.cluster.local:6379`
 
 > **部署前请确认**: 已导出 `VALKEY_PASSWORD`。密码通过 Helm `--set-string` 注入，不要把真实密码写入 `k8s/middlewares/valkey.values.yaml`。
 
-配置参考: [`k8s/middlewares/valkey.values.yaml`](middlewares/valkey.values.yaml)
+配置参考:
+- 单节点验证: [`k8s/middlewares/valkey.values.yaml`](middlewares/valkey.values.yaml)
+- 集群部署: [`k8s/middlewares/valkey.cluster.values.yaml`](middlewares/valkey.cluster.values.yaml)
 
 ---
 
@@ -294,13 +340,17 @@ helm upgrade --install alephant-prod-qdrant qdrant/qdrant \
   --set-string config.service.api_key="$QDRANT_API_KEY"
 ```
 
+集群部署时使用 `k8s/middlewares/qdrant.cluster.values.yaml`。
+
 服务地址:
 - HTTP: `alephant-prod-qdrant.alephant-prod.svc.cluster.local:6333`
 - gRPC: `alephant-prod-qdrant.alephant-prod.svc.cluster.local:6334`
 
 > **部署前请确认**: 已导出 `QDRANT_API_KEY`。API Key 通过 Helm `--set-string` 注入，不要把真实值写入 `k8s/middlewares/qdrant.values.yaml`。
 
-配置参考: [`k8s/middlewares/qdrant.values.yaml`](middlewares/qdrant.values.yaml)
+配置参考:
+- 单节点验证: [`k8s/middlewares/qdrant.values.yaml`](middlewares/qdrant.values.yaml)
+- 集群部署: [`k8s/middlewares/qdrant.cluster.values.yaml`](middlewares/qdrant.cluster.values.yaml)
 
 ---
 
@@ -318,6 +368,12 @@ kubectl create secret generic alephant-minio-secret \
 kubectl apply -f k8s/middlewares/minio.values.yaml
 ```
 
+集群部署时使用：
+
+```bash
+kubectl apply -f k8s/middlewares/minio.cluster.yaml
+```
+
 > **部署前请确认**: 已导出 `MINIO_ROOT_USER` 和 `MINIO_ROOT_PASSWORD`。MinIO 账号密码通过 `alephant-minio-secret` 注入，不要把真实密码写入 `k8s/middlewares/minio.values.yaml`。
 > **注意**: `pgsty/minio` 镜像需要保留镜像入口点，启动参数必须写在 `args` 中，不能用 `command` 覆盖 entrypoint。
 
@@ -325,7 +381,9 @@ kubectl apply -f k8s/middlewares/minio.values.yaml
 - S3 API: `alephant-minio.alephant-prod.svc.cluster.local:9000`
 - Console: `alephant-minio.alephant-prod.svc.cluster.local:9001`
 
-配置参考: [`k8s/middlewares/minio.values.yaml`](middlewares/minio.values.yaml)
+配置参考:
+- 单节点验证: [`k8s/middlewares/minio.values.yaml`](middlewares/minio.values.yaml)
+- 集群部署: [`k8s/middlewares/minio.cluster.yaml`](middlewares/minio.cluster.yaml)
 
 ---
 
@@ -337,7 +395,15 @@ TiKV + PD 在 Docker Compose 中直接使用 PingCAP 官方镜像启动。K8s �
 kubectl apply -f k8s/middlewares/tikv-pd.yaml
 ```
 
-配置参考: [`k8s/middlewares/tikv-pd.yaml`](middlewares/tikv-pd.yaml)
+集群部署时使用：
+
+```bash
+kubectl apply -f k8s/middlewares/tikv-pd.cluster.yaml
+```
+
+配置参考:
+- 单节点验证: [`k8s/middlewares/tikv-pd.yaml`](middlewares/tikv-pd.yaml)
+- 集群部署: [`k8s/middlewares/tikv-pd.cluster.yaml`](middlewares/tikv-pd.cluster.yaml)
 
 服务地址:
 - PD: `pd.alephant-prod.svc.cluster.local:2379`

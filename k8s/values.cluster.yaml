@@ -1,0 +1,221 @@
+global:
+  namespace: alephant-prod
+  imageRegistry: registry.openmodels.link/alephant
+  imagePullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# SaaS 前端 (SPA + Nginx 反向代理)
+# ---------------------------------------------------------------------------
+app:
+  replicas: 2
+  name: alephant-app
+  image:
+    repository: alephant-app
+    tag: "20260713224933"
+  env:
+    API_BASE_URL:
+      value: "https://openmodels.link"
+    GATEWAY_BASE_URL:
+      value: "https://ai.openmodels.link/v1"
+    COLLECTOR_BASE_URL:
+      value: "https://analytics.openmodels.link"
+  service:
+    enabled: true
+    port: 80
+
+# ---------------------------------------------------------------------------
+# SaaS 后端
+# ---------------------------------------------------------------------------
+saasService:
+  replicas: 2
+  name: alephant-saas-service
+  image:
+    repository: alephant-saas-service
+    tag: "20260713225022"
+  envFrom:
+    - secretRef:
+        name: alephant-saas-service-secrets
+  volumes:
+    - name: license
+      configMap:
+        name: alephant-license
+        defaultMode: 420
+  volumeMounts:
+    - name: license
+      mountPath: /etc/alephant/license
+      readOnly: true
+  env:
+    ALEPHANT_LICENSE_FILE:
+      value: /etc/alephant/license/license.jwt
+    PRIVATE_WORKSPACE_OWNER_EMAILS:
+      valueFrom:
+        configMapKeyRef:
+          name: alephant-license
+          key: PRIVATE_WORKSPACE_OWNER_EMAILS
+  service:
+    enabled: true
+    port: 8080
+
+# ---------------------------------------------------------------------------
+# 策略后端（HTTP + gRPC 双端口）
+# ---------------------------------------------------------------------------
+policyService:
+  replicas: 2
+  name: alephant-policy-service
+  image:
+    repository: alephant-policy-service
+    tag: "20260713224812"
+  envFrom:
+    - secretRef:
+        name: alephant-policy-service-secrets
+  service:
+    enabled: true
+    ports:
+      - name: http
+        targetPort: 8090
+        port: 8090
+      - name: grpc
+        port: 9090
+        targetPort: 9090
+
+# ---------------------------------------------------------------------------
+# AI 网关
+# ---------------------------------------------------------------------------
+aiGateway:
+  replicas: 2
+  name: alephant-ai-gateway
+  image:
+    repository: alephant-ai-gateway
+    tag: "20260713224915"
+  envFrom:
+    - secretRef:
+        name: alephant-ai-gateway-secrets
+  service:
+    enabled: true
+    port: 8080
+
+# ---------------------------------------------------------------------------
+# 日志收集器
+# ---------------------------------------------------------------------------
+logsCollector:
+  replicas: 2
+  name: alephant-logs-collector
+  image:
+    repository: alephant-logs-collector
+    tag: "20260713225050"
+  envFrom:
+    - secretRef:
+        name: alephant-logs-collector-secrets
+  service:
+    enabled: true
+    port: 8585
+
+# ---------------------------------------------------------------------------
+# Ingress — 多域名路由
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: "haproxy"
+  hosts:
+    # --- openmodels.link (前端 + SaaS API + 策略) ---
+    - metadata:
+        name: alephant-prod
+        annotations:
+          cert-manager.io/cluster-issuer: openmodels
+      spec:
+        tls:
+          - hosts:
+              - openmodels.link
+            secretName: openmodels.link
+        rules:
+          - host: openmodels.link
+            http:
+              paths:
+                - path: /api/v1
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: alephant-saas-service
+                      port:
+                        number: 8080
+                - path: /v1/policy
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: alephant-policy-service
+                      port:
+                        number: 8090
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: alephant-app
+                      port:
+                        number: 80
+
+    # --- ai.openmodels.link (AI 网关) ---
+    - metadata:
+        name: alephant-ai-gateway
+        annotations:
+          cert-manager.io/cluster-issuer: openmodels
+      spec:
+        tls:
+          - hosts:
+              - ai.openmodels.link
+            secretName: ai.openmodels.link
+        rules:
+          - host: ai.openmodels.link
+            http:
+              paths:
+                - path: /v1
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: alephant-ai-gateway
+                      port:
+                        number: 8080
+
+    # --- analytics.openmodels.link (日志分析) ---
+    - metadata:
+        name: alephant-analytics
+        annotations:
+          cert-manager.io/cluster-issuer: openmodels
+      spec:
+        tls:
+          - hosts:
+              - analytics.openmodels.link
+            secretName: analytics.openmodels.link
+        rules:
+          - host: analytics.openmodels.link
+            http:
+              paths:
+                - path: /v1
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: alephant-logs-collector
+                      port:
+                        number: 8585
+
+    # --- api.openmodels.link (带 path-rewrite 的 AI 网关) ---
+    - metadata:
+        name: api-alephant
+        annotations:
+          cert-manager.io/cluster-issuer: openmodels
+          haproxy.org/path-rewrite: /v1/(.*) /key_market/\1
+      spec:
+        tls:
+          - hosts:
+              - api.openmodels.link
+            secretName: api.openmodels.link
+        rules:
+          - host: api.openmodels.link
+            http:
+              paths:
+                - path: /v1
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: alephant-ai-gateway
+                      port:
+                        number: 8080

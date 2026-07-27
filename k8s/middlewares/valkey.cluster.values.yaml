@@ -1,0 +1,51 @@
+# =============================================================================
+# Alephant — Valkey (Redis 兼容) 集群部署配置
+# =============================================================================
+# Chart: valkey/valkey (官方 Chart)
+# 用法:
+#   helm repo add valkey https://valkey.io/valkey-helm/
+#   helm upgrade --install alephant-valkey valkey/valkey \
+#     --version 0.9.4 \
+#     --namespace alephant-prod \
+#     --create-namespace \
+#     -f k8s/middlewares/valkey.cluster.values.yaml \
+#     --set-string auth.aclUsers.default.password="$VALKEY_PASSWORD"
+# =============================================================================
+
+image:
+  tag: 9.0.2
+
+replica:
+  enabled: true
+  replicas: 2
+  persistence:
+    size: 20Gi
+    # 部署前替换为实际集群 StorageClass，不能使用单节点 local-path。
+    storageClass: REPLACE_WITH_CLUSTER_STORAGE_CLASS
+
+dataStorage:
+  enabled: true
+  requestedSize: 20Gi
+  # 部署前替换为实际集群 StorageClass，不能使用单节点 local-path。
+  className: REPLACE_WITH_CLUSTER_STORAGE_CLASS
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+auth:
+  enabled: true
+  aclUsers:
+    default:
+      permissions: "~* &* +@all"
+      # 真实密码通过 Helm --set-string auth.aclUsers.default.password="$VALKEY_PASSWORD" 注入。
+      password: "CHANGE_ME"
+  replicationUser: "default"
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
