@@ -1,7 +1,7 @@
 # =============================================================================
 # Alephant — TiKV + PD 部署 (最小配置，单节点)
 # =============================================================================
-# 生产环境参见: ../alephantai-tikv.yaml
+# 生产环境建议改用多副本 TiKV/PD 并通过正式 Operator 或独立方案管理。
 # =============================================================================
 
 # --- PD Service ---
@@ -43,8 +43,6 @@ spec:
       labels:
         app: pd
     spec:
-      imagePullSecrets:
-        - name: alephant-registry-cred
       containers:
         - name: pd
           image: pingcap/pd:v7.5.0
@@ -78,10 +76,10 @@ spec:
         name: data
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: alicloud-disk-essd
+        storageClassName: local-path
         resources:
           requests:
-            storage: 20Gi
+            storage: 2Gi
 ---
 # --- TiKV Service ---
 apiVersion: v1
@@ -119,8 +117,6 @@ spec:
       labels:
         app: tikv
     spec:
-      imagePullSecrets:
-        - name: alephant-registry-cred
       containers:
         - name: tikv
           image: pingcap/tikv:v7.5.0
@@ -152,7 +148,7 @@ spec:
         name: data
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: alicloud-disk-essd
+        storageClassName: local-path
         resources:
           requests:
-            storage: 20Gi
+            storage: 5Gi

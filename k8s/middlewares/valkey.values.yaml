@@ -8,7 +8,7 @@
 #     --version 0.9.4 \
 #     --namespace alephant-prod \
 #     --create-namespace \
-#     -f middlewares/valkey.values.yaml
+#     -f k8s/middlewares/valkey.values.yaml
 # =============================================================================
 
 image:
@@ -18,13 +18,13 @@ replica:
   enabled: true
   replicas: 0
   persistence:
-    size: 50Gi
-    storageClass: alicloud-disk-essd
+    size: 2Gi
+    storageClass: local-path
 
 dataStorage:
   enabled: true
-  requestedSize: 50Gi
-  className: alicloud-disk-essd
+  requestedSize: 2Gi
+  className: local-path
 
 resources:
   requests:
@@ -43,5 +43,5 @@ auth:
   replicationUser: "default"
 
 podDisruptionBudget:
-  enabled: true
+  enabled: false
   maxUnavailable: 1

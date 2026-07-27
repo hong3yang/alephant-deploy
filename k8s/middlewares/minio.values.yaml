@@ -2,7 +2,7 @@
 # Alephant — MinIO 部署 (兼容 docker-compose 的 pgsty/minio 镜像)
 # =============================================================================
 # 用法:
-#   kubectl apply -f middlewares/minio-deploy.yaml
+#   kubectl apply -f k8s/middlewares/minio.values.yaml
 # =============================================================================
 apiVersion: v1
 kind: Service
@@ -40,8 +40,6 @@ spec:
       labels:
         app: alephant-minio
     spec:
-      imagePullSecrets:
-        - name: alephant-registry-cred
       containers:
         - name: minio
           image: pgsty/minio:latest
@@ -58,9 +56,9 @@ spec:
               name: console
           env:
             - name: MINIO_ROOT_USER
-              value: "admin"
+              value: "minioadmin"
             - name: MINIO_ROOT_PASSWORD
-              value: "minioadmin123"
+              value: "CHANGE_ME"
           volumeMounts:
             - name: data
               mountPath: /data
@@ -84,7 +82,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: alicloud-disk-essd
+  storageClassName: local-path
   resources:
     requests:
-      storage: 50Gi
+      storage: 5Gi

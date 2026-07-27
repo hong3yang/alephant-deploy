@@ -69,9 +69,18 @@
 | **PostgreSQL** | [CNPG Operator](https://cloudnative-pg.io/) | 使用内部 `cnpg-cluster` chart |
 | **ClickHouse** | [Altinity Operator](https://github.com/Altinity/clickhouse-operator) | 使用内部 `clickhouse-cluster` chart |
 | **Valkey / Redis** | 官方 Helm Chart (valkey/valkey) | |
-| **Qdrant** | 官方 Helm Chart (qdrant/qdrant) | 单节点需改 `replicaCount: 1` |
-| **TiKV + PD** | StatefulSet 直 deploy | 参见 `middlewares/tikv-pd.yaml` |
-| **MinIO** | 直接 K8s 资源 (pgsty/minio) | 参见 `middlewares/minio.values.yaml` |
+| **Qdrant** | 官方 Helm Chart (qdrant/qdrant) | 当前 values 已按单节点配置 |
+| **TiKV + PD** | StatefulSet 直 deploy | 参见 `k8s/middlewares/tikv-pd.yaml` |
+| **MinIO** | 直接 K8s 资源 (pgsty/minio) | 参见 `k8s/middlewares/minio.values.yaml` |
+
+### 单节点最小验证配置
+
+当前 `k8s/middlewares/` 下的默认配置已按 k3s 单节点最小验证调整：
+
+- StorageClass 使用 k3s 默认 `local-path`
+- PostgreSQL、ClickHouse、ClickHouse Keeper、Qdrant、PD、TiKV、MinIO 均为单副本
+- 中间件 PVC 申请量合计约 39Gi，80G 系统盘可用于部署流程验证
+- 该配置不提供多副本高可用，不适合作为生产配置
 
 ### 网络连通性
 
@@ -88,40 +97,56 @@
 
 ## 快速开始
 
-### 1. 准备 Helm Chart
+以下命令默认在项目根目录执行。
 
-确保 `helm-charts/charts/common` Chart 可用（或通过 Helm 仓库引用）：
+### 1. 准备命名空间和中间件凭据
+
+部署中间件前先准备并记录同一组中间件凭据，后续 `start-k8s.sh` 会要求这些环境变量与中间件 values 保持一致：
 
 ```bash
+export NAMESPACE=alephant-prod
+export POSTGRES_PASSWORD="<replace-me>"
+export CLICKHOUSE_PASSWORD="<replace-me>"
+export VALKEY_PASSWORD="<replace-me>"
+export QDRANT_API_KEY="<replace-me>"
+export MINIO_ROOT_USER="minioadmin"
+export MINIO_ROOT_PASSWORD="<replace-me>"
+```
 
-# 从 Helm 仓库
+建议使用 `openssl rand -hex 16` 生成无引号、无空格的值，避免写入 YAML、shell 和连接串时转义出错。
+
+### 2. 部署基础设施中间件
+
+按 [基础设施部署参考](#基础设施部署参考) 部署 PostgreSQL、ClickHouse、Valkey、Qdrant、MinIO、PD 和 TiKV，并确认所有 Pod Running。
+
+### 3. 创建业务 Secret、ConfigMap 并初始化数据库
+
+```bash
+bash start-k8s.sh
+```
+
+详见 [Secrets 管理](#secrets-管理) 章节。
+
+### 4. 部署业务 Helm Chart
+
+```bash
 helm repo add weconomy https://helm-charts.weconomy.network
 helm upgrade --install alephant-prod weconomy/common \
   --version 0.1.16 \
-  --namespace alephant-prod \
+  --namespace "$NAMESPACE" \
   --create-namespace \
-  -f values.yaml
+  -f k8s/values.yaml
 ```
 
-### 2. 创建 Secrets
+### 5. （可选）启用 Ingress
 
-运行自动生成脚本：
+编辑 `k8s/values.yaml`，将 `ingress.enabled` 设为 `true`，并填入你的 Ingress Controller `className` 和域名配置。
 
-```bash
-bash k8s/generate-secrets.sh
-```
-
-脚本会随机生成所有密码/密钥并创建 4 个 Secret。详见 [Secrets 管理](#secrets-管理) 章节。
-
-### 3. （可选）启用 Ingress
-
-编辑 `values.yaml`，将 `ingress.enabled` 设为 `true`，并填入你的 Ingress Controller `className` 和域名配置。
-
-### 4. 验证部署
+### 6. 验证部署
 
 ```bash
-kubectl get pods -n alephant-prod
-kubectl get svc -n alephant-prod
+kubectl get pods -n "$NAMESPACE"
+kubectl get svc -n "$NAMESPACE"
 ```
 
 ---
@@ -146,7 +171,7 @@ kubectl get svc -n alephant-prod
 
 ## 基础设施部署参考
 
-以下基于生产环境的 Helm 命令。各中间件的完整 values 配置保存在 `middlewares/` 目录下，使用 `-f` 引用即可。
+以下基于 k3s 单节点最小验证环境。各中间件的完整 values 配置保存在 `k8s/middlewares/` 目录下，使用 `-f` 引用即可。
 
 ### PostgreSQL (CNPG Operator)
 
@@ -155,17 +180,25 @@ kubectl get svc -n alephant-prod
 ```bash
 helm repo add weconomy https://helm-charts.weconomy.network
 
+kubectl create secret generic alephant-postgres-app \
+  --namespace alephant-prod \
+  --from-literal=username=alephant \
+  --from-literal=password="$POSTGRES_PASSWORD" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 helm upgrade --install alephant-postgres weconomy/cnpg-cluster \
   --version 0.1.0 \
   --namespace alephant-prod \
   --create-namespace \
-  -f middlewares/postgres.values.yaml
+  -f k8s/middlewares/postgres.values.yaml
 ```
 
 服务地址: `alephant-postgres-rw.alephant-prod.svc.cluster.local:5432`
 数据库: `alephant`，用户: `alephant`
 
-配置参考: [`middlewares/postgres.values.yaml`](middlewares/postgres.values.yaml)
+> **部署前请确认**: `POSTGRES_PASSWORD` 与 `alephant-postgres-app` Secret 中的 `password` 一致。
+
+配置参考: [`k8s/middlewares/postgres.values.yaml`](middlewares/postgres.values.yaml)
 
 ---
 
@@ -180,17 +213,17 @@ helm upgrade --install alephant-clickhouse weconomy/clickhouse-cluster \
   --version 0.1.1 \
   --namespace alephant-prod \
   --create-namespace \
-  -f middlewares/clickhouse.values.yaml
+  -f k8s/middlewares/clickhouse.values.yaml
 ```
 
 > **注意**: 首次部署需先安装 [Altinity ClickHouse Operator](https://github.com/Altinity/clickhouse-operator)。
-> **部署前请修改**: `middlewares/clickhouse.values.yaml` 中的 `default/password` 和 Pod CIDR。
+> **部署前请修改**: `k8s/middlewares/clickhouse.values.yaml` 中的 `default/password`，值必须与 `CLICKHOUSE_PASSWORD` 一致。k3s 默认 Pod CIDR 已按 `10.42.0.0/16`、Service CIDR 已按 `10.43.0.0/16` 预置。
 
 服务地址:
 - HTTP: `ch-clickhouse.alephant-prod.svc.cluster.local:8123`
 - 原生 TCP: `ch-clickhouse.alephant-prod.svc.cluster.local:9000`
 
-配置参考: [`middlewares/clickhouse.values.yaml`](middlewares/clickhouse.values.yaml)
+配置参考: [`k8s/middlewares/clickhouse.values.yaml`](middlewares/clickhouse.values.yaml)
 
 ---
 
@@ -205,18 +238,20 @@ helm upgrade --install alephant-valkey valkey/valkey \
   --version 0.9.4 \
   --namespace alephant-prod \
   --create-namespace \
-  -f middlewares/valkey.values.yaml
+  -f k8s/middlewares/valkey.values.yaml
 ```
 
 服务地址: `alephant-valkey.alephant-prod.svc.cluster.local:6379`
 
-配置参考: [`middlewares/valkey.values.yaml`](middlewares/valkey.values.yaml)
+> **部署前请修改**: `k8s/middlewares/valkey.values.yaml` 中的 `auth.aclUsers.default.password`，值必须与 `VALKEY_PASSWORD` 一致。
+
+配置参考: [`k8s/middlewares/valkey.values.yaml`](middlewares/valkey.values.yaml)
 
 ---
 
 ### Qdrant (向量数据库)
 
-使用官方 Helm Chart 部署。默认 3 节点集群（需 ≥3 个 Worker 节点）。单节点集群请修改 `replicaCount: 1` 并关闭 `config.cluster.enabled`。
+使用官方 Helm Chart 部署。当前 values 已配置为单节点并关闭集群模式。
 
 ```bash
 helm repo add qdrant https://qdrant.github.io/qdrant-helm/
@@ -225,14 +260,16 @@ helm upgrade --install alephant-prod-qdrant qdrant/qdrant \
   --version 1.17.1 \
   --namespace alephant-prod \
   --create-namespace \
-  -f middlewares/qdrant.values.yaml
+  -f k8s/middlewares/qdrant.values.yaml
 ```
 
 服务地址:
 - HTTP: `alephant-prod-qdrant.alephant-prod.svc.cluster.local:6333`
 - gRPC: `alephant-prod-qdrant.alephant-prod.svc.cluster.local:6334`
 
-配置参考: [`middlewares/qdrant.values.yaml`](middlewares/qdrant.values.yaml)
+> **部署前请修改**: `k8s/middlewares/qdrant.values.yaml` 中的 `config.service.api_key`，值必须与 `QDRANT_API_KEY` 一致。
+
+配置参考: [`k8s/middlewares/qdrant.values.yaml`](middlewares/qdrant.values.yaml)
 
 ---
 
@@ -241,14 +278,16 @@ helm upgrade --install alephant-prod-qdrant qdrant/qdrant \
 与 Docker Compose 一致，使用 `pgsty/minio` 镜像直接部署。
 
 ```bash
-kubectl apply -f middlewares/minio.values.yaml
+kubectl apply -f k8s/middlewares/minio.values.yaml
 ```
+
+> **部署前请修改**: `k8s/middlewares/minio.values.yaml` 中的 `MINIO_ROOT_PASSWORD`，值必须与 `MINIO_ROOT_PASSWORD` 环境变量一致。
 
 服务地址:
 - S3 API: `alephant-minio.alephant-prod.svc.cluster.local:9000`
 - Console: `alephant-minio.alephant-prod.svc.cluster.local:9001`
 
-配置参考: [`middlewares/minio.values.yaml`](middlewares/minio.values.yaml)
+配置参考: [`k8s/middlewares/minio.values.yaml`](middlewares/minio.values.yaml)
 
 ---
 
@@ -257,12 +296,10 @@ kubectl apply -f middlewares/minio.values.yaml
 TiKV + PD 在 Docker Compose 中直接使用 PingCAP 官方镜像启动。K8s 中可通过 StatefulSet 部署。
 
 ```bash
-kubectl apply -f middlewares/tikv-pd.yaml
+kubectl apply -f k8s/middlewares/tikv-pd.yaml
 ```
 
-配置参考: [`middlewares/tikv-pd.yaml`](middlewares/tikv-pd.yaml)
-
-> **注意**: alicloud-disk-essd 最小容量为 20Gi，低于此值 PVC 会 provisioning 失败。
+配置参考: [`k8s/middlewares/tikv-pd.yaml`](middlewares/tikv-pd.yaml)
 
 服务地址:
 - PD: `pd.alephant-prod.svc.cluster.local:2379`
@@ -273,13 +310,20 @@ kubectl apply -f middlewares/tikv-pd.yaml
 
 ## Secrets 管理
 
-业务服务的环境变量通过 K8s Secret 注入。使用自动生成脚本创建：
+业务服务的环境变量通过 K8s Secret 注入。`start-k8s.sh` 不再随机生成中间件密码，执行前必须先导出与中间件 values 一致的变量：
 
 ```bash
-bash k8s/generate-secrets.sh
+export POSTGRES_PASSWORD="<same-as-alephant-postgres-app>"
+export CLICKHOUSE_PASSWORD="<same-as-clickhouse-values>"
+export VALKEY_PASSWORD="<same-as-valkey-values>"
+export QDRANT_API_KEY="<same-as-qdrant-values>"
+export MINIO_ROOT_USER="minioadmin"
+export MINIO_ROOT_PASSWORD="<same-as-minio-values>"
+
+bash start-k8s.sh
 ```
 
-脚本会自动生成随机密码/密钥并创建以下 4 个 Secret：
+脚本会校验以上变量，自动生成业务侧随机密钥，并创建以下 4 个 Secret：
 
 | Secret 名称 | 对应服务 | 对应 docker-compose 文件 |
 |---|---|---|
@@ -316,11 +360,10 @@ Alephant 私有化部署需要有效的 License 文件进行授权验证。Licen
 # 1. 创建 License ConfigMap
 kubectl create configmap alephant-license \
   --from-file=license.jwt=./license/license.jwt \
+  --from-literal=PRIVATE_WORKSPACE_OWNER_EMAILS="admin@example.com" \
   -n alephant-prod
 
-# 2. 设置工作空间拥有者邮箱（必填），编辑 values.yaml 或通过 --set 传入
-#    PRIVATE_WORKSPACE_OWNER_EMAILS: "admin@example.com"
-#    多个邮箱用逗号分隔: "admin@example.com,user2@example.com"
+# 多个邮箱用逗号分隔: "admin@example.com,user2@example.com"
 ```
 
 `values.yaml` 中 `saasService` 已预置 volume 挂载和环境变量：
@@ -339,7 +382,10 @@ saasService:
     ALEPHANT_LICENSE_FILE:
       value: /etc/alephant/license/license.jwt
     PRIVATE_WORKSPACE_OWNER_EMAILS:
-      value: "admin@example.com"   # ← 替换为你实际的邮箱
+      valueFrom:
+        configMapKeyRef:
+          name: alephant-license
+          key: PRIVATE_WORKSPACE_OWNER_EMAILS
 ```
 
 ### 更新 License
@@ -348,20 +394,21 @@ saasService:
 # 1. 更新 ConfigMap
 kubectl create configmap alephant-license \
   --from-file=license.jwt=./license/license.jwt \
+  --from-literal=PRIVATE_WORKSPACE_OWNER_EMAILS="admin@example.com" \
   -n alephant-prod -o yaml --dry-run=client | kubectl replace -f -
 
 # 2. 滚动重启 saasService 使新 License 生效
-kubectl rollout restart deployment/alephantai-saas-service -n alephant-prod
+kubectl rollout restart deployment/alephant-saas-service -n alephant-prod
 ```
 
 ### 验证 License
 
 ```bash
 # 查看 saasService 日志确认 License 加载状态
-kubectl logs -l app=alephantai-saas-service -n alephant-prod --tail=50 | grep -i license
+kubectl logs -l app=alephant-saas-service -n alephant-prod --tail=50 | grep -i license
 
 # 或通过 API 验证
-kubectl port-forward svc/alephantai-saas-service 8080:8080 -n alephant-prod &
+kubectl port-forward svc/alephant-saas-service 8080:8080 -n alephant-prod &
 curl http://localhost:8080/api/v1/health
 ```
 
@@ -374,7 +421,7 @@ curl http://localhost:8080/api/v1/health
 | 域名 | 路由路径 | 后端 Service | 说明 |
 |---|---|---|---|
 | **openmodels.link** | `/api/v1` | saas-service:8080 | SaaS API |
-| | `/v1/policy` | policy-service:8080 | 策略服务 |
+| | `/v1/policy` | policy-service:8090 | 策略服务 |
 | | `/` | app:80 (SPA) | 前端页面 |
 | **ai.openmodels.link** | `/v1` | ai-gateway:8080 | AI 网关 |
 | **analytics.openmodels.link** | `/v1` | logs-collector:8585 | 日志分析 |
@@ -398,7 +445,7 @@ helm upgrade alephant-prod /path/to/charts/common -f k8s/values.yaml
 或临时通过 kubectl 调整：
 
 ```bash
-kubectl scale deployment alephantai-saas-service --replicas=3 -n alephant-prod
+kubectl scale deployment alephant-saas-service --replicas=3 -n alephant-prod
 ```
 
 > **注意**: 如果使用 GitOps（ArgoCD/Flux），`kubectl scale` 的更改会在下一次同步时被覆盖。持久更改应修改 values 文件。

@@ -45,10 +45,12 @@ saasService:
         name: alephant-saas-service-secrets
   # --------------------------------------------------------------------------
   # 私有化部署 — License 激活
-  # 将颁发的 license.jwt 创建为 ConfigMap 后挂载到容器中。
+  # start-k8s.sh 会创建 alephant-license ConfigMap，用于挂载 license.jwt
+  # 并提供 PRIVATE_WORKSPACE_OWNER_EMAILS。
   #
   #   kubectl create configmap alephant-license \
   #     --from-file=license.jwt=./license/license.jwt \
+  #     --from-literal=PRIVATE_WORKSPACE_OWNER_EMAILS=admin@example.com \
   #     -n alephant-prod
   # --------------------------------------------------------------------------
   volumes:
@@ -64,7 +66,10 @@ saasService:
     ALEPHANT_LICENSE_FILE:
       value: /etc/alephant/license/license.jwt
     PRIVATE_WORKSPACE_OWNER_EMAILS:
-      value: ""             # ← 替换为实际的工作空间拥有者邮箱，多个用逗号分隔
+      valueFrom:
+        configMapKeyRef:
+          name: alephant-license
+          key: PRIVATE_WORKSPACE_OWNER_EMAILS
   service:
     enabled: true
     port: 8080
@@ -174,7 +179,7 @@ ingress:
                     service:
                       name: alephant-policy-service
                       port:
-                        number: 8080
+                        number: 8090
                 - path: /
                   pathType: Prefix
                   backend:

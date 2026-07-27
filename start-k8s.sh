@@ -2,15 +2,17 @@
 # =============================================================================
 # start-k8s.sh — Alephant K8s Secrets + ConfigMap + DB Init 脚本
 # =============================================================================
-# 自动生成随机密码/密钥，创建 K8s Secret/ConfigMap 资源，初始化数据库。
+# 校验中间件凭据，自动生成业务密钥，创建 K8s Secret/ConfigMap 资源，初始化数据库。
 #
 # 用法:
-#   cd alephant-docker/ && bash start-k8s.sh
+#   cd alephant-deploy/ && bash start-k8s.sh
 #
 # 前置条件:
 #   - kubectl 已配置到目标集群
 #   - ${NAMESPACE} namespace 已存在
 #   - 中间件（postgres / valkey / qdrant / minio / pd / clickhouse）已部署
+#   - 已导出 POSTGRES_PASSWORD / CLICKHOUSE_PASSWORD / VALKEY_PASSWORD /
+#     QDRANT_API_KEY / MINIO_ROOT_PASSWORD，且与中间件配置一致
 # =============================================================================
 set -euo pipefail
 
@@ -29,6 +31,15 @@ gen_pswd() { openssl rand -base64 32 | tr -d '/+=' | cut -c1-24; }
 gen_jwt()  { openssl rand -base64 48 | tr -d '/+='; }
 gen_key()  { openssl rand -base64 32; }
 gen_token(){ openssl rand -base64 32; }
+
+require_env() {
+  local name="$1"
+  local hint="$2"
+  if [ -z "${!name:-}" ]; then
+    err "缺少环境变量 ${name}: ${hint}"
+    exit 1
+  fi
+}
 
 # ─── 跨平台 sed -i ──
 sed_i() {
@@ -54,35 +65,39 @@ check_prereqs() {
 
 # ─── 生成随机密码和密钥 ──────────────────────────────────────────────────
 generate_secrets() {
-  info "生成随机密码和密钥..."
+  info "检查中间件凭据并生成应用密钥..."
 
-  # ── 基础设施密码 ──
-  POSTGRES_PASSWORD=$(gen_pswd)
-  CLICKHOUSE_PASSWORD=$(gen_pswd)
-  VALKEY_PASSWORD=$(gen_pswd)
-  QDRANT_API_KEY=$(gen_token)
+  # ── 基础设施密码：必须与已部署中间件 values/Secret 保持一致，不能在这里随机生成 ──
+  require_env POSTGRES_PASSWORD "需与 CNPG initdb Secret alephant-postgres-app 的 password 一致"
+  require_env CLICKHOUSE_PASSWORD "需与 k8s/middlewares/clickhouse.values.yaml 的 users.default/password 一致"
+  require_env VALKEY_PASSWORD "需与 k8s/middlewares/valkey.values.yaml 的 auth.aclUsers.default.password 一致"
+  require_env QDRANT_API_KEY "需与 k8s/middlewares/qdrant.values.yaml 的 config.service.api_key 一致"
+  require_env MINIO_ROOT_PASSWORD "需与 k8s/middlewares/minio.values.yaml 的 MINIO_ROOT_PASSWORD 一致"
   MINIO_ROOT_USER="${MINIO_ROOT_USER:-minioadmin}"
-  MINIO_ROOT_PASSWORD=$(gen_pswd)
 
-  # ── 共享密钥 ──
-  JWT_SECRET=$(gen_jwt)
-  MASTER_KEY=$(gen_jwt)
-  ENCRYPTION_KEY=$(gen_key)
-  MASTER_KEY_ENCRYPTION_KEY=$(gen_key)
-  NOTIFICATION_ENCRYPTION_KEY=$(gen_key)
-  LOGS_COLLECTOR_X402_HTTP_AUTH_TOKEN=$(gen_token)
-  PAYMENT_SERVICE_KEY=$(gen_token)
-  OUTBOUND_PAYMENT_HMAC_SECRET=$(gen_jwt)
-  REVENUE_WITHDRAW_HMAC_SECRET=$(gen_jwt)
+  # ── 共享密钥：未显式提供时生成随机值 ──
+  JWT_SECRET="${JWT_SECRET:-$(gen_jwt)}"
+  MASTER_KEY="${MASTER_KEY:-$(gen_jwt)}"
+  ENCRYPTION_KEY="${ENCRYPTION_KEY:-$(gen_key)}"
+  MASTER_KEY_ENCRYPTION_KEY="${MASTER_KEY_ENCRYPTION_KEY:-$(gen_key)}"
+  NOTIFICATION_ENCRYPTION_KEY="${NOTIFICATION_ENCRYPTION_KEY:-$(gen_key)}"
+  LOGS_COLLECTOR_X402_HTTP_AUTH_TOKEN="${LOGS_COLLECTOR_X402_HTTP_AUTH_TOKEN:-$(gen_token)}"
+  PAYMENT_SERVICE_KEY="${PAYMENT_SERVICE_KEY:-$(gen_token)}"
+  OUTBOUND_PAYMENT_HMAC_SECRET="${OUTBOUND_PAYMENT_HMAC_SECRET:-$(gen_jwt)}"
+  REVENUE_WITHDRAW_HMAC_SECRET="${REVENUE_WITHDRAW_HMAC_SECRET:-$(gen_jwt)}"
   S3_ACCESS_KEY=${MINIO_ROOT_USER}
   S3_SECRET_KEY=${MINIO_ROOT_PASSWORD}
 
   echo ""
   echo "═══════════════════════════════════════════"
-  echo "  生成的密码 (请保存)"
+  echo "  当前使用的关键凭据 (请保存)"
   echo "═══════════════════════════════════════════"
   echo "  PostgreSQL:    ${POSTGRES_PASSWORD}"
+  echo "  ClickHouse:    ${CLICKHOUSE_PASSWORD}"
   echo "  Valkey:        ${VALKEY_PASSWORD}"
+  echo "  Qdrant API:    ${QDRANT_API_KEY}"
+  echo "  MinIO User:    ${MINIO_ROOT_USER}"
+  echo "  MinIO Pass:    ${MINIO_ROOT_PASSWORD}"
   echo "  JWT Secret:    ${JWT_SECRET}"
   echo "═══"
 }
@@ -218,7 +233,9 @@ create_secret() {
 
 create_all_secrets() {
   local PG_HOST="${PG_HOST:-alephant-postgres-rw}"
+  local CLICKHOUSE_HOST="${CLICKHOUSE_HOST:-ch-clickhouse}"
   local VALKEY_HOST="${VALKEY_HOST:-alephant-valkey}"
+  local CLICKHOUSE_CREDS_JSON="{\"CLICKHOUSE_HOST\":\"http://${CLICKHOUSE_HOST}:8123\",\"CLICKHOUSE_USER\":\"default\",\"CLICKHOUSE_PASSWORD\":\"${CLICKHOUSE_PASSWORD}\",\"CLICKHOUSE_HQL_USER\":\"hql_user\",\"CLICKHOUSE_HQL_PASSWORD\":\"\"}"
 
   info "创建 K8s Secret..."
 
@@ -299,7 +316,7 @@ create_all_secrets() {
   create_secret alephant-ai-gateway-secrets \
     --from-literal=POSTGRES_DATABASE_URL="postgresql://alephant:${POSTGRES_PASSWORD}@${PG_HOST}:5432/alephant" \
     --from-literal=REDIS_URL="redis://default:${VALKEY_PASSWORD}@${VALKEY_HOST}:6379/0" \
-    --from-literal=CLICKHOUSE_CREDS="default:${CLICKHOUSE_PASSWORD}" \
+    --from-literal=CLICKHOUSE_CREDS="${CLICKHOUSE_CREDS_JSON}" \
     --from-literal=AI_GATEWAY__SEMANTIC_CACHE__QDRANT__URL="http://alephant-prod-qdrant:6333" \
     --from-literal=AI_GATEWAY__SEMANTIC_CACHE__QDRANT__API_KEY="${QDRANT_API_KEY}" \
     --from-literal=AI_GATEWAY__TIKV_KV__PD_ENDPOINTS='["pd:2379"]' \
@@ -326,7 +343,7 @@ create_all_secrets() {
   create_secret alephant-logs-collector-secrets \
     --from-literal=POSTGRES_DATABASE_URL="postgresql://alephant:${POSTGRES_PASSWORD}@${PG_HOST}:5432/alephant" \
     --from-literal=REDIS_URL="redis://default:${VALKEY_PASSWORD}@${VALKEY_HOST}:6379/0" \
-    --from-literal=CLICKHOUSE_CREDS="default:${CLICKHOUSE_PASSWORD}" \
+    --from-literal=CLICKHOUSE_CREDS="${CLICKHOUSE_CREDS_JSON}" \
     --from-literal=S3_ENDPOINT="http://alephant-minio:9000" \
     --from-literal=S3_REGION="us-east-1" \
     --from-literal=S3_BUCKET_NAME="alephant" \
@@ -344,18 +361,18 @@ create_all_secrets() {
 create_all_configmaps() {
   info "创建 ConfigMap..."
 
-  # 1. alephant-license-config — license.jwt + 拥有者邮箱
+  # 1. alephant-license — license.jwt + 拥有者邮箱
   local LICENSE_DIR="${SCRIPT_DIR}/license"
   if [ -f "${LICENSE_DIR}/license.jwt" ]; then
-    kubectl delete configmap --namespace "${NAMESPACE}" alephant-license-config --ignore-not-found &>/dev/null
-    kubectl create configmap alephant-license-config \
+    kubectl delete configmap --namespace "${NAMESPACE}" alephant-license --ignore-not-found &>/dev/null
+    kubectl create configmap alephant-license \
       --namespace "${NAMESPACE}" \
       --from-file=license.jwt="${LICENSE_DIR}/license.jwt" \
       --from-literal=PRIVATE_WORKSPACE_OWNER_EMAILS="${PRIVATE_WORKSPACE_OWNER_EMAILS:-}" \
       --save-config=false 2>&1 | grep -v "Warning:" || true
-    ok "  ConfigMap alephant-license-config 已创建"
+    ok "  ConfigMap alephant-license 已创建"
   else
-    warn "  license.jwt 不存在，跳过 alephant-license-config"
+    warn "  license.jwt 不存在，跳过 alephant-license"
   fi
 
   # 2. alephant-sql-config — SQL 文件
@@ -448,7 +465,7 @@ ensure_namespace() {
 main() {
   echo ""
   echo "═══════════════════════════════════════════"
-  echo "  Alephant K8s 部署"
+  echo "  Alephant K8s 前置配置"
   echo "═══════════════════════════════════════════"
   echo ""
 
@@ -494,7 +511,7 @@ main() {
 
   echo ""
   echo "═══════════════════════════════════════════"
-  echo "  ✅ 部署完成"
+  echo "  前置配置完成"
   echo "═══════════════════════════════════════════"
   echo ""
   echo "  如需查看生成的密码:"

@@ -8,7 +8,7 @@
 #     --version 0.1.1 \
 #     --namespace alephant-prod \
 #     --create-namespace \
-#     -f middlewares/clickhouse.values.yaml
+#     -f k8s/middlewares/clickhouse.values.yaml
 # =============================================================================
 
 nameOverride: ch
@@ -26,16 +26,16 @@ clickhouse:
       cpu: "1"
       memory: 2Gi
   persistence:
-    storageClassName: alicloud-disk-essd    # ← 按你的集群存储类修改
-    size: 50Gi
+    storageClassName: local-path            # k3s 默认 StorageClass
+    size: 10Gi
 
 layout:
   shardsCount: 1
-  replicasCount: 2
+  replicasCount: 1
 
 keeper:
   enabled: true
-  replicas: 3
+  replicas: 1
   image:
     repository: clickhouse/clickhouse-keeper
     tag: "24.8-alpine"
@@ -47,8 +47,8 @@ keeper:
       cpu: 500m
       memory: 512Mi
   persistence:
-    storageClassName: alicloud-disk-essd    # ← 按你的集群存储类修改
-    size: 20Gi
+    storageClassName: local-path            # k3s 默认 StorageClass
+    size: 2Gi
 
 # 用户密码 — 部署前务必修改
 users:
@@ -56,8 +56,10 @@ users:
   "default/profile": default
   "default/quota": default
   "default/networks/ip":
-    - "10.0.0.0/8"                         # ← 按集群 Pod CIDR 调整
+    - "10.42.0.0/16"                       # k3s 默认 Pod CIDR
+    - "10.43.0.0/16"                       # k3s 默认 Service CIDR
     - "::1"
     - "127.0.0.1"
 
 pdbMaxUnavailable: 1
+podAntiAffinity: false

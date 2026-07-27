@@ -7,27 +7,30 @@
 #     --version 0.1.0 \
 #     --namespace alephant-prod \
 #     --create-namespace \
-#     -f middlewares/postgres.values.yaml
+#     -f k8s/middlewares/postgres.values.yaml
 # =============================================================================
 
-instances: 2
+# 单节点最小验证环境。生产环境请至少 3 实例并重新开启同步副本/PDB。
+instances: 1
 
 image:
   repository: ghcr.io/cloudnative-pg/postgresql
   tag: "17.5"
 
 postgresql:
-  minSyncReplicas: 1
-  maxSyncReplicas: 1
+  minSyncReplicas: 0
+  maxSyncReplicas: 0
 
 bootstrap:
   initdb:
     database: alephant
     owner: alephant
+    # 部署前先创建同名 Secret，key 为 username/password，password 需与 start-k8s.sh 的 POSTGRES_PASSWORD 一致。
+    secret: alephant-postgres-app
 
 storage:
-  storageClass: alicloud-disk-essd    # ← 按你的集群存储类修改
-  size: 50Gi
+  storageClass: local-path            # k3s 默认 StorageClass
+  size: 8Gi
 
 resources:
   requests:
@@ -37,4 +40,4 @@ resources:
     cpu: "1"
     memory: 2Gi
 
-enablePDB: true
+enablePDB: false
