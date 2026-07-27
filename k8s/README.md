@@ -87,7 +87,7 @@
 各业务服务通过 **K8s Service DNS** 访问基础设施，例如：
 
 - PostgreSQL: `alephant-postgres-rw.alephant-prod.svc.cluster.local:5432`
-- ClickHouse: `ch-clickhouse.alephant-prod.svc.cluster.local:8123`
+- ClickHouse: `clickhouse-ch.alephant-prod.svc.cluster.local:8123`
 - Valkey: `alephant-valkey.alephant-prod.svc.cluster.local:6379`
 - Qdrant: `alephant-prod-qdrant.alephant-prod.svc.cluster.local:6333`
 - PD: `pd.alephant-prod.svc.cluster.local:2379`
@@ -177,6 +177,8 @@ kubectl get svc -n "$NAMESPACE"
 
 使用内部 `cnpg-cluster` chart 部署高可用 PostgreSQL 集群。
 
+当前 `sql/pgsql.sql` 由 PostgreSQL 18.3 导出，`k8s/middlewares/postgres.values.yaml` 必须保持 `ghcr.io/cloudnative-pg/postgresql:18.3` 或更高兼容版本。不要降级到 PostgreSQL 17.x，否则初始化可能出现 dump 语法兼容错误。
+
 ```bash
 helm repo add weconomy https://helm-charts.weconomy.network
 
@@ -206,6 +208,17 @@ helm upgrade --install alephant-postgres weconomy/cnpg-cluster \
 
 使用内部 `clickhouse-cluster` chart 部署 ClickHouse 集群（含 ClickHouse Keeper 仲裁）。
 
+Altinity Operator 如果安装在 `clickhouse` namespace，默认可能只监听自身 namespace。部署业务 namespace 前先确认它监听 `alephant-prod`：
+
+```bash
+kubectl set env deployment/clickhouse-operator-altinity-clickhouse-operator \
+  -n clickhouse WATCH_NAMESPACES=clickhouse,alephant-prod
+kubectl rollout restart deployment/clickhouse-operator-altinity-clickhouse-operator -n clickhouse
+kubectl rollout status deployment/clickhouse-operator-altinity-clickhouse-operator -n clickhouse --timeout=180s
+```
+
+Operator 0.27.x 默认在 Keeper 配置中启用 `use_xid_64`，要求 ClickHouse Keeper 25.3+。因此当前 values 固定为 `clickhouse-server:25.3` 和 `clickhouse-keeper:25.3-alpine`；不要改回 24.8，否则 Keeper 会因 `Unknown setting 'use_xid_64'` 启动失败。
+
 ```bash
 helm repo add weconomy https://helm-charts.weconomy.network
 
@@ -220,8 +233,8 @@ helm upgrade --install alephant-clickhouse weconomy/clickhouse-cluster \
 > **部署前请修改**: `k8s/middlewares/clickhouse.values.yaml` 中的 `default/password`，值必须与 `CLICKHOUSE_PASSWORD` 一致。k3s 默认 Pod CIDR 已按 `10.42.0.0/16`、Service CIDR 已按 `10.43.0.0/16` 预置。
 
 服务地址:
-- HTTP: `ch-clickhouse.alephant-prod.svc.cluster.local:8123`
-- 原生 TCP: `ch-clickhouse.alephant-prod.svc.cluster.local:9000`
+- HTTP: `clickhouse-ch.alephant-prod.svc.cluster.local:8123`
+- 原生 TCP: `clickhouse-ch.alephant-prod.svc.cluster.local:9000`
 
 配置参考: [`k8s/middlewares/clickhouse.values.yaml`](middlewares/clickhouse.values.yaml)
 
@@ -282,6 +295,7 @@ kubectl apply -f k8s/middlewares/minio.values.yaml
 ```
 
 > **部署前请修改**: `k8s/middlewares/minio.values.yaml` 中的 `MINIO_ROOT_PASSWORD`，值必须与 `MINIO_ROOT_PASSWORD` 环境变量一致。
+> **注意**: `pgsty/minio` 镜像需要保留镜像入口点，启动参数必须写在 `args` 中，不能用 `command` 覆盖 entrypoint。
 
 服务地址:
 - S3 API: `alephant-minio.alephant-prod.svc.cluster.local:9000`
@@ -451,3 +465,31 @@ kubectl scale deployment alephant-saas-service --replicas=3 -n alephant-prod
 > **注意**: 如果使用 GitOps（ArgoCD/Flux），`kubectl scale` 的更改会在下一次同步时被覆盖。持久更改应修改 values 文件。
 
 ---
+
+## 常见问题
+
+### ClickHouse / Keeper 没有创建 Pod
+
+先确认 Altinity Operator 是否监听了业务 namespace：
+
+```bash
+kubectl logs -n clickhouse deploy/clickhouse-operator-altinity-clickhouse-operator --tail=100 | grep -A5 'watch.namespaces.include'
+```
+
+如果只看到 `clickhouse`，按 ClickHouse 部署章节设置 `WATCH_NAMESPACES=clickhouse,alephant-prod` 后重启 Operator。
+
+### Keeper CrashLoopBackOff 且日志出现 `use_xid_64`
+
+这是 Operator 0.27.x 与旧版 Keeper 镜像不兼容。保持 `clickhouse-keeper:25.3-alpine` 或更高兼容版本，然后重新 `helm upgrade` ClickHouse release。
+
+### MinIO CrashLoopBackOff 且日志出现 `exec: "server": executable file not found`
+
+说明 manifest 把 `server` 写到了 `command`，覆盖了镜像 entrypoint。使用当前 `k8s/middlewares/minio.values.yaml` 中的 `args` 写法后重新 apply 并重启 MinIO。
+
+### PostgreSQL 初始化出现 `syntax error at or near "."`
+
+通常是 SQL 里出现了 `CREATE INDEX public.index_name ...` 这种 PostgreSQL 不接受的 schema-qualified index name。当前 `sql/pgsql.sql` 已修正为不带 `public.` 的索引名。旧版本文档或旧 SQL 需要同步更新后再初始化全新数据库。
+
+### 业务服务无法连接 ClickHouse
+
+实际服务名是 `clickhouse-ch`，不是 `ch-clickhouse`。检查 `alephant-ai-gateway-secrets` 和 `alephant-logs-collector-secrets` 中的 `CLICKHOUSE_CREDS`，应指向 `http://clickhouse-ch:8123`。

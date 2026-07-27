@@ -15,7 +15,7 @@ instances: 1
 
 image:
   repository: ghcr.io/cloudnative-pg/postgresql
-  tag: "17.5"
+  tag: "18.3"
 
 postgresql:
   minSyncReplicas: 0

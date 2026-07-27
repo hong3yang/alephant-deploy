@@ -17,7 +17,7 @@ clickhouse:
   clusterName: main
   image:
     repository: clickhouse/clickhouse-server
-    tag: "24.8"
+    tag: "25.3"
   resources:
     requests:
       cpu: 500m
@@ -38,7 +38,7 @@ keeper:
   replicas: 1
   image:
     repository: clickhouse/clickhouse-keeper
-    tag: "24.8-alpine"
+    tag: "25.3-alpine"
   resources:
     requests:
       cpu: 250m

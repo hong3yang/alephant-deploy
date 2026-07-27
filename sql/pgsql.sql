@@ -25,7 +25,7 @@ SET row_security = off;
 -- Name: public; Type: SCHEMA; Schema: -; Owner: -
 --
 
-CREATE SCHEMA public;
+CREATE SCHEMA IF NOT EXISTS public;
 
 
 --
@@ -9725,11 +9725,11 @@ CREATE TABLE public.workspace_invitations (
   CONSTRAINT workspace_invitations_role_not_owner CHECK (role <> 'owner')
 );
 
-CREATE UNIQUE INDEX public.uq_workspace_invitations_pending_email
+CREATE UNIQUE INDEX uq_workspace_invitations_pending_email
   ON public.workspace_invitations (workspace_id, email)
   WHERE status = 'pending';
 
-CREATE INDEX public.idx_workspace_invitations_workspace_pending
+CREATE INDEX idx_workspace_invitations_workspace_pending
   ON public.workspace_invitations (workspace_id, expires_at)
   WHERE status = 'pending';
 
@@ -10597,4 +10597,3 @@ COMMIT;
 --
 
 \unrestrict b5n4ijRYtgdDoXrJNkjxGVAsnNiqUwz57yWAn8bnd3v1F6eZiXwvvmj5dvKM5MR
-

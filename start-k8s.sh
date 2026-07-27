@@ -233,7 +233,7 @@ create_secret() {
 
 create_all_secrets() {
   local PG_HOST="${PG_HOST:-alephant-postgres-rw}"
-  local CLICKHOUSE_HOST="${CLICKHOUSE_HOST:-ch-clickhouse}"
+  local CLICKHOUSE_HOST="${CLICKHOUSE_HOST:-clickhouse-ch}"
   local VALKEY_HOST="${VALKEY_HOST:-alephant-valkey}"
   local CLICKHOUSE_CREDS_JSON="{\"CLICKHOUSE_HOST\":\"http://${CLICKHOUSE_HOST}:8123\",\"CLICKHOUSE_USER\":\"default\",\"CLICKHOUSE_PASSWORD\":\"${CLICKHOUSE_PASSWORD}\",\"CLICKHOUSE_HQL_USER\":\"hql_user\",\"CLICKHOUSE_HQL_PASSWORD\":\"\"}"
 
@@ -413,12 +413,19 @@ init_databases() {
 
   # ── 检查是否已有表 ──
   local TABLE_COUNT
-  TABLE_COUNT=$(kubectl exec -n "${NAMESPACE}" "${PG_POD}" -- psql -U alephant -d alephant -t -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';" 2>/dev/null | tr -d ' ')
+  TABLE_COUNT=$(kubectl exec -n "${NAMESPACE}" "${PG_POD}" -- bash -c "PGPASSWORD='${POSTGRES_PASSWORD}' psql -U alephant -h localhost -d alephant -t -c \"SELECT count(*) FROM information_schema.tables WHERE table_schema='public';\"" 2>/dev/null | tr -d '[:space:]')
   if [ -n "${TABLE_COUNT}" ] && [ "${TABLE_COUNT}" -gt 0 ] 2>/dev/null; then
     ok "  数据库已有 ${TABLE_COUNT} 张表，跳过初始化"
   else
     info "  导入 pgsql.sql..."
-    kubectl exec -n "${NAMESPACE}" -i "${PG_POD}" -- bash -c "PGPASSWORD='${POSTGRES_PASSWORD}' psql -U alephant -h localhost -d alephant" < "${SCRIPT_DIR}/sql/pgsql.sql" 2>&1 | grep -E "ERROR|CREATE TABLE|INSERT" || true
+    local PG_IMPORT_OUTPUT
+    if PG_IMPORT_OUTPUT=$(kubectl exec -n "${NAMESPACE}" -i "${PG_POD}" -- bash -c "PGPASSWORD='${POSTGRES_PASSWORD}' psql -v ON_ERROR_STOP=1 -U alephant -h localhost -d alephant" < "${SCRIPT_DIR}/sql/pgsql.sql" 2>&1); then
+      echo "${PG_IMPORT_OUTPUT}" | grep -E "ERROR|CREATE TABLE|INSERT" || true
+    else
+      echo "${PG_IMPORT_OUTPUT}" | tail -n 80 >&2
+      err "pgsql.sql 导入失败"
+      return 1
+    fi
     ok "  pgsql.sql 导入完成"
   fi
 
@@ -427,7 +434,7 @@ init_databases() {
   i=0
   local CH_POD
   while [ $i -lt $RETRIES ]; do
-    CH_POD=$(kubectl get pod -n "${NAMESPACE}" -l 'app.kubernetes.io/instance=alephant-clickhouse' -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    CH_POD=$(kubectl get pod -n "${NAMESPACE}" -l 'clickhouse.altinity.com/chi=ch' -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
     if [ -n "${CH_POD}" ] && kubectl exec -n "${NAMESPACE}" "${CH_POD}" -- clickhouse-client --user default --password "${CLICKHOUSE_PASSWORD}" --query "SELECT 1" &>/dev/null; then
       ok "  ClickHouse 就绪 (${CH_POD})"
       break
@@ -436,8 +443,8 @@ init_databases() {
     sleep $WAIT
   done
   if [ $i -ge $RETRIES ]; then
-    warn "ClickHouse 未能就绪，跳过初始化"
-    return
+    err "ClickHouse 未能就绪，无法继续初始化"
+    return 1
   fi
 
   # ── ClickHouse 初始化 ──
@@ -447,7 +454,14 @@ init_databases() {
     ok "  ClickHouse 已有 ${CH_TABLES} 张表，跳过初始化"
   else
     info "  导入 clickhouse.sql..."
-    kubectl exec -n "${NAMESPACE}" -i "${CH_POD}" -- clickhouse-client --user default --password "${CLICKHOUSE_PASSWORD}" < "${SCRIPT_DIR}/sql/clickhouse.sql" 2>&1 | grep -v "DB::Exception" || true
+    local CH_IMPORT_OUTPUT
+    if CH_IMPORT_OUTPUT=$(kubectl exec -n "${NAMESPACE}" -i "${CH_POD}" -- clickhouse-client --user default --password "${CLICKHOUSE_PASSWORD}" < "${SCRIPT_DIR}/sql/clickhouse.sql" 2>&1); then
+      [ -n "${CH_IMPORT_OUTPUT}" ] && echo "${CH_IMPORT_OUTPUT}"
+    else
+      echo "${CH_IMPORT_OUTPUT}" | tail -n 80 >&2
+      err "clickhouse.sql 导入失败"
+      return 1
+    fi
     ok "  clickhouse.sql 导入完成"
   fi
 }
