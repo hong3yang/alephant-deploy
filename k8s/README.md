@@ -138,6 +138,21 @@ helm upgrade --install alephant-prod weconomy/common \
   -f k8s/values.yaml
 ```
 
+部署前请按实际访问方式确认前端运行时环境变量。仅做 SSH tunnel / port-forward 验证时，可使用当前默认值：
+
+```yaml
+app:
+  env:
+    API_BASE_URL:
+      value: "http://127.0.0.1:18080"
+    GATEWAY_BASE_URL:
+      value: "http://127.0.0.1:18081/v1"
+    COLLECTOR_BASE_URL:
+      value: "http://127.0.0.1:18082"
+```
+
+如果使用公网域名或 Ingress，需要替换为浏览器可访问的域名地址，例如 `https://your-domain.com`、`https://ai.your-domain.com/v1`、`https://analytics.your-domain.com`。这里不能填写集群内 Service DNS，因为前端代码运行在用户浏览器中。
+
 ### 5. （可选）启用 Ingress
 
 编辑 `k8s/values.yaml`，将 `ingress.enabled` 设为 `true`，并填入你的 Ingress Controller `className` 和域名配置。

@@ -19,9 +19,11 @@ app:
   #     effect: NoSchedule
   env:
     API_BASE_URL:
-      value: "http://localhost"
+      value: "http://127.0.0.1:18080"
+    GATEWAY_BASE_URL:
+      value: "http://127.0.0.1:18081/v1"
     COLLECTOR_BASE_URL:
-      value: "http://localhost:82"
+      value: "http://127.0.0.1:18082"
   service:
     enabled: true
     port: 80
