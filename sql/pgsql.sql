@@ -10592,6 +10592,7 @@ WHERE model.provider_id = 'db1cbfcb-8d6d-4a55-9ddb-c1e638738b38'::uuid;
 COMMIT;
 
 
+SET search_path = public, pg_catalog;
 
 CREATE TABLE projects (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

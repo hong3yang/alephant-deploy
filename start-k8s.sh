@@ -415,6 +415,13 @@ init_databases() {
   local TABLE_COUNT
   TABLE_COUNT=$(kubectl exec -n "${NAMESPACE}" "${PG_POD}" -- bash -c "PGPASSWORD='${POSTGRES_PASSWORD}' psql -U alephant -h localhost -d alephant -t -c \"SELECT count(*) FROM information_schema.tables WHERE table_schema='public';\"" 2>/dev/null | tr -d '[:space:]')
   if [ -n "${TABLE_COUNT}" ] && [ "${TABLE_COUNT}" -gt 0 ] 2>/dev/null; then
+    local MISSING_REQUIRED_TABLES
+    MISSING_REQUIRED_TABLES=$(kubectl exec -n "${NAMESPACE}" "${PG_POD}" -- bash -c "PGPASSWORD='${POSTGRES_PASSWORD}' psql -U alephant -h localhost -d alephant -tAc \"SELECT string_agg(table_name, ', ') FROM (VALUES ('projects')) AS required(table_name) WHERE to_regclass('public.' || table_name) IS NULL;\"" 2>/dev/null | xargs || true)
+    if [ -n "${MISSING_REQUIRED_TABLES}" ]; then
+      err "数据库已有 ${TABLE_COUNT} 张表，但缺少必要对象: ${MISSING_REQUIRED_TABLES}"
+      err "这通常表示上一次 PostgreSQL 初始化中断。请先恢复数据库到完整状态或重建全新 PostgreSQL，再重新执行脚本。"
+      return 1
+    fi
     ok "  数据库已有 ${TABLE_COUNT} 张表，跳过初始化"
   else
     info "  导入 pgsql.sql..."
