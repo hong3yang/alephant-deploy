@@ -348,7 +348,7 @@ kubectl apply -f k8s/middlewares/tikv-pd.yaml
 
 ## Secrets 管理
 
-业务服务的环境变量通过 K8s Secret 注入。`start-k8s.sh` 不再随机生成中间件密码，执行前必须先导出与中间件部署时一致的变量：
+业务服务的环境变量通过 K8s Secret 注入。`start-k8s.sh` 不再随机生成中间件密码，会使用当前 shell 中已经导出的中间件凭据。如果前面已经在当前 shell 中导出过这些变量，可以直接执行脚本；如果是新终端或重新登录服务器，请重新导出：
 
 ```bash
 export POSTGRES_PASSWORD="<same-as-alephant-postgres-app>"
@@ -357,7 +357,19 @@ export VALKEY_PASSWORD="<same-as-valkey-helm-set>"
 export QDRANT_API_KEY="<same-as-qdrant-helm-set>"
 export MINIO_ROOT_USER="minioadmin"
 export MINIO_ROOT_PASSWORD="<same-as-alephant-minio-secret>"
+```
 
+执行脚本前可以用以下命令检查变量是否已设置；该命令不会打印真实密码：
+
+```bash
+for v in POSTGRES_PASSWORD CLICKHOUSE_PASSWORD VALKEY_PASSWORD QDRANT_API_KEY MINIO_ROOT_PASSWORD; do
+  [ -n "${!v:-}" ] && echo "$v 已设置" || echo "$v 未设置"
+done
+```
+
+启动脚本：
+
+```bash
 bash start-k8s.sh
 ```
 
@@ -389,20 +401,15 @@ Alephant 私有化部署需要有效的 License 文件进行授权验证。Licen
 
 1. 联系 Alephant 团队获取 `license.jwt` 文件
 2. 将文件放置到 `alephant-deploy/license/license.jwt`
+3. 可选：提前导出工作空间拥有者邮箱，多个邮箱用英文逗号分隔。不导出也可以，`start-k8s.sh` 会提示输入。
 
-### K8s 部署
+   ```bash
+   export PRIVATE_WORKSPACE_OWNER_EMAILS="admin@example.com"
+   ```
 
-将 License 文件创建为 ConfigMap 并挂载到 Pod：
+首次部署时不需要手动创建 `alephant-license` ConfigMap。执行 `start-k8s.sh` 时，脚本会读取 `license/license.jwt`；如果未导出 `PRIVATE_WORKSPACE_OWNER_EMAILS`，脚本会提示输入邮箱，然后统一创建 License ConfigMap、业务 Secret 和 SQL ConfigMap。
 
-```bash
-# 1. 创建 License ConfigMap
-kubectl create configmap alephant-license \
-  --from-file=license.jwt=./license/license.jwt \
-  --from-literal=PRIVATE_WORKSPACE_OWNER_EMAILS="admin@example.com" \
-  -n alephant-prod
-
-# 多个邮箱用逗号分隔: "admin@example.com,user2@example.com"
-```
+### K8s 挂载配置
 
 `values.yaml` 中 `saasService` 已预置 volume 挂载和环境变量：
 
