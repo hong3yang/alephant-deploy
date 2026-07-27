@@ -2,6 +2,10 @@
 # Alephant — MinIO 部署 (兼容 docker-compose 的 pgsty/minio 镜像)
 # =============================================================================
 # 用法:
+#   kubectl create secret generic alephant-minio-secret \
+#     --from-literal=MINIO_ROOT_USER="$MINIO_ROOT_USER" \
+#     --from-literal=MINIO_ROOT_PASSWORD="$MINIO_ROOT_PASSWORD" \
+#     -n alephant-prod --dry-run=client -o yaml | kubectl apply -f -
 #   kubectl apply -f k8s/middlewares/minio.values.yaml
 # =============================================================================
 apiVersion: v1
@@ -56,9 +60,15 @@ spec:
               name: console
           env:
             - name: MINIO_ROOT_USER
-              value: "minioadmin"
+              valueFrom:
+                secretKeyRef:
+                  name: alephant-minio-secret
+                  key: MINIO_ROOT_USER
             - name: MINIO_ROOT_PASSWORD
-              value: "CHANGE_ME"
+              valueFrom:
+                secretKeyRef:
+                  name: alephant-minio-secret
+                  key: MINIO_ROOT_PASSWORD
           volumeMounts:
             - name: data
               mountPath: /data

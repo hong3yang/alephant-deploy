@@ -101,7 +101,7 @@
 
 ### 1. 准备命名空间和中间件凭据
 
-部署中间件前先准备并记录同一组中间件凭据，后续 `start-k8s.sh` 会要求这些环境变量与中间件 values 保持一致：
+部署中间件前先准备并记录同一组中间件凭据。中间件部署会通过 Secret 或 Helm `--set-string` 注入这些值，不要把真实密码/API Key 写入 `k8s/middlewares/*.yaml`。后续 `start-k8s.sh` 也会要求导出同一组环境变量：
 
 ```bash
 export NAMESPACE=alephant-prod
@@ -241,11 +241,12 @@ helm upgrade --install alephant-clickhouse weconomy/clickhouse-cluster \
   --version 0.1.1 \
   --namespace alephant-prod \
   --create-namespace \
-  -f k8s/middlewares/clickhouse.values.yaml
+  -f k8s/middlewares/clickhouse.values.yaml \
+  --set-string users.default/password="$CLICKHOUSE_PASSWORD"
 ```
 
 > **注意**: 首次部署需先安装 [Altinity ClickHouse Operator](https://github.com/Altinity/clickhouse-operator)。
-> **部署前请修改**: `k8s/middlewares/clickhouse.values.yaml` 中的 `default/password`，值必须与 `CLICKHOUSE_PASSWORD` 一致。k3s 默认 Pod CIDR 已按 `10.42.0.0/16`、Service CIDR 已按 `10.43.0.0/16` 预置。
+> **部署前请确认**: 已导出 `CLICKHOUSE_PASSWORD`。密码通过 Helm `--set-string` 注入，不要把真实密码写入 `k8s/middlewares/clickhouse.values.yaml`。k3s 默认 Pod CIDR 已按 `10.42.0.0/16`、Service CIDR 已按 `10.43.0.0/16` 预置。
 
 服务地址:
 - HTTP: `clickhouse-ch.alephant-prod.svc.cluster.local:8123`
@@ -266,12 +267,13 @@ helm upgrade --install alephant-valkey valkey/valkey \
   --version 0.9.4 \
   --namespace alephant-prod \
   --create-namespace \
-  -f k8s/middlewares/valkey.values.yaml
+  -f k8s/middlewares/valkey.values.yaml \
+  --set-string auth.aclUsers.default.password="$VALKEY_PASSWORD"
 ```
 
 服务地址: `alephant-valkey.alephant-prod.svc.cluster.local:6379`
 
-> **部署前请修改**: `k8s/middlewares/valkey.values.yaml` 中的 `auth.aclUsers.default.password`，值必须与 `VALKEY_PASSWORD` 一致。
+> **部署前请确认**: 已导出 `VALKEY_PASSWORD`。密码通过 Helm `--set-string` 注入，不要把真实密码写入 `k8s/middlewares/valkey.values.yaml`。
 
 配置参考: [`k8s/middlewares/valkey.values.yaml`](middlewares/valkey.values.yaml)
 
@@ -288,14 +290,15 @@ helm upgrade --install alephant-prod-qdrant qdrant/qdrant \
   --version 1.17.1 \
   --namespace alephant-prod \
   --create-namespace \
-  -f k8s/middlewares/qdrant.values.yaml
+  -f k8s/middlewares/qdrant.values.yaml \
+  --set-string config.service.api_key="$QDRANT_API_KEY"
 ```
 
 服务地址:
 - HTTP: `alephant-prod-qdrant.alephant-prod.svc.cluster.local:6333`
 - gRPC: `alephant-prod-qdrant.alephant-prod.svc.cluster.local:6334`
 
-> **部署前请修改**: `k8s/middlewares/qdrant.values.yaml` 中的 `config.service.api_key`，值必须与 `QDRANT_API_KEY` 一致。
+> **部署前请确认**: 已导出 `QDRANT_API_KEY`。API Key 通过 Helm `--set-string` 注入，不要把真实值写入 `k8s/middlewares/qdrant.values.yaml`。
 
 配置参考: [`k8s/middlewares/qdrant.values.yaml`](middlewares/qdrant.values.yaml)
 
@@ -306,10 +309,16 @@ helm upgrade --install alephant-prod-qdrant qdrant/qdrant \
 与 Docker Compose 一致，使用 `pgsty/minio` 镜像直接部署。
 
 ```bash
+kubectl create secret generic alephant-minio-secret \
+  --from-literal=MINIO_ROOT_USER="$MINIO_ROOT_USER" \
+  --from-literal=MINIO_ROOT_PASSWORD="$MINIO_ROOT_PASSWORD" \
+  -n alephant-prod \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 kubectl apply -f k8s/middlewares/minio.values.yaml
 ```
 
-> **部署前请修改**: `k8s/middlewares/minio.values.yaml` 中的 `MINIO_ROOT_PASSWORD`，值必须与 `MINIO_ROOT_PASSWORD` 环境变量一致。
+> **部署前请确认**: 已导出 `MINIO_ROOT_USER` 和 `MINIO_ROOT_PASSWORD`。MinIO 账号密码通过 `alephant-minio-secret` 注入，不要把真实密码写入 `k8s/middlewares/minio.values.yaml`。
 > **注意**: `pgsty/minio` 镜像需要保留镜像入口点，启动参数必须写在 `args` 中，不能用 `command` 覆盖 entrypoint。
 
 服务地址:
@@ -339,15 +348,15 @@ kubectl apply -f k8s/middlewares/tikv-pd.yaml
 
 ## Secrets 管理
 
-业务服务的环境变量通过 K8s Secret 注入。`start-k8s.sh` 不再随机生成中间件密码，执行前必须先导出与中间件 values 一致的变量：
+业务服务的环境变量通过 K8s Secret 注入。`start-k8s.sh` 不再随机生成中间件密码，执行前必须先导出与中间件部署时一致的变量：
 
 ```bash
 export POSTGRES_PASSWORD="<same-as-alephant-postgres-app>"
-export CLICKHOUSE_PASSWORD="<same-as-clickhouse-values>"
-export VALKEY_PASSWORD="<same-as-valkey-values>"
-export QDRANT_API_KEY="<same-as-qdrant-values>"
+export CLICKHOUSE_PASSWORD="<same-as-clickhouse-helm-set>"
+export VALKEY_PASSWORD="<same-as-valkey-helm-set>"
+export QDRANT_API_KEY="<same-as-qdrant-helm-set>"
 export MINIO_ROOT_USER="minioadmin"
-export MINIO_ROOT_PASSWORD="<same-as-minio-values>"
+export MINIO_ROOT_PASSWORD="<same-as-alephant-minio-secret>"
 
 bash start-k8s.sh
 ```

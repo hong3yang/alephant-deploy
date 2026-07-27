@@ -8,7 +8,8 @@
 #     --version 0.9.4 \
 #     --namespace alephant-prod \
 #     --create-namespace \
-#     -f k8s/middlewares/valkey.values.yaml
+#     -f k8s/middlewares/valkey.values.yaml \
+#     --set-string auth.aclUsers.default.password="$VALKEY_PASSWORD"
 # =============================================================================
 
 image:
@@ -39,7 +40,8 @@ auth:
   aclUsers:
     default:
       permissions: "~* &* +@all"
-      password: "CHANGE_ME"                # ← 务必替换
+      # 真实密码通过 Helm --set-string auth.aclUsers.default.password="$VALKEY_PASSWORD" 注入。
+      password: "CHANGE_ME"
   replicationUser: "default"
 
 podDisruptionBudget:

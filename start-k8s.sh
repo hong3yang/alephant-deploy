@@ -12,7 +12,7 @@
 #   - ${NAMESPACE} namespace 已存在
 #   - 中间件（postgres / valkey / qdrant / minio / pd / clickhouse）已部署
 #   - 已导出 POSTGRES_PASSWORD / CLICKHOUSE_PASSWORD / VALKEY_PASSWORD /
-#     QDRANT_API_KEY / MINIO_ROOT_PASSWORD，且与中间件配置一致
+#     QDRANT_API_KEY / MINIO_ROOT_PASSWORD，且与中间件部署时使用的值一致
 # =============================================================================
 set -euo pipefail
 
@@ -67,12 +67,12 @@ check_prereqs() {
 generate_secrets() {
   info "检查中间件凭据并生成应用密钥..."
 
-  # ── 基础设施密码：必须与已部署中间件 values/Secret 保持一致，不能在这里随机生成 ──
+  # ── 基础设施密码：必须与已部署中间件时使用的 Helm 参数/Secret 保持一致，不能在这里随机生成 ──
   require_env POSTGRES_PASSWORD "需与 CNPG initdb Secret alephant-postgres-app 的 password 一致"
-  require_env CLICKHOUSE_PASSWORD "需与 k8s/middlewares/clickhouse.values.yaml 的 users.default/password 一致"
-  require_env VALKEY_PASSWORD "需与 k8s/middlewares/valkey.values.yaml 的 auth.aclUsers.default.password 一致"
-  require_env QDRANT_API_KEY "需与 k8s/middlewares/qdrant.values.yaml 的 config.service.api_key 一致"
-  require_env MINIO_ROOT_PASSWORD "需与 k8s/middlewares/minio.values.yaml 的 MINIO_ROOT_PASSWORD 一致"
+  require_env CLICKHOUSE_PASSWORD "需与部署 ClickHouse 时 --set-string users.default/password 的值一致"
+  require_env VALKEY_PASSWORD "需与部署 Valkey 时 --set-string auth.aclUsers.default.password 的值一致"
+  require_env QDRANT_API_KEY "需与部署 Qdrant 时 --set-string config.service.api_key 的值一致"
+  require_env MINIO_ROOT_PASSWORD "需与 alephant-minio-secret 的 MINIO_ROOT_PASSWORD 一致"
   MINIO_ROOT_USER="${MINIO_ROOT_USER:-minioadmin}"
 
   # ── 共享密钥：未显式提供时生成随机值 ──

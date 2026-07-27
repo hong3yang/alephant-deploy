@@ -8,7 +8,8 @@
 #     --version 1.17.1 \
 #     --namespace alephant-prod \
 #     --create-namespace \
-#     -f k8s/middlewares/qdrant.values.yaml
+#     -f k8s/middlewares/qdrant.values.yaml \
+#     --set-string config.service.api_key="$QDRANT_API_KEY"
 # =============================================================================
 
 # 单节点模式（适用于测试 / 开发）
@@ -31,4 +32,5 @@ config:
   cluster:
     enabled: false       # 单节点时关闭集群模式
   service:
-    api_key: "CHANGE_ME"  # ← 务必替换
+    # 真实 API Key 通过 Helm --set-string config.service.api_key="$QDRANT_API_KEY" 注入。
+    api_key: "CHANGE_ME"

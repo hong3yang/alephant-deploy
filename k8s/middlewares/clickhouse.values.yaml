@@ -8,7 +8,8 @@
 #     --version 0.1.1 \
 #     --namespace alephant-prod \
 #     --create-namespace \
-#     -f k8s/middlewares/clickhouse.values.yaml
+#     -f k8s/middlewares/clickhouse.values.yaml \
+#     --set-string users.default/password="$CLICKHOUSE_PASSWORD"
 # =============================================================================
 
 nameOverride: ch
@@ -50,9 +51,10 @@ keeper:
     storageClassName: local-path            # k3s 默认 StorageClass
     size: 2Gi
 
-# 用户密码 — 部署前务必修改
+# 用户密码通过 Helm --set-string users.default/password="$CLICKHOUSE_PASSWORD" 注入。
+# 不要在仓库文件中写入真实密码。
 users:
-  "default/password": "CHANGE_ME"           # ← 务必替换
+  "default/password": "CHANGE_ME"
   "default/profile": default
   "default/quota": default
   "default/networks/ip":
