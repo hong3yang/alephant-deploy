@@ -508,3 +508,14 @@ kubectl logs -n clickhouse deploy/clickhouse-operator-altinity-clickhouse-operat
 ### 业务服务无法连接 ClickHouse
 
 实际服务名是 `clickhouse-ch`，不是 `ch-clickhouse`。检查 `alephant-ai-gateway-secrets` 和 `alephant-logs-collector-secrets` 中的 `CLICKHOUSE_CREDS`，应指向 `http://clickhouse-ch:8123`。
+
+### port-forward 报 `accept: Too many open files`
+
+通常是重复启动了多个 SSH tunnel 或 `kubectl port-forward` 进程。先清理旧转发，再提高当前 shell 的文件句柄限制后重新启动：
+
+```bash
+pkill -f 'kubectl.*port-forward.*alephant' || true
+ulimit -n 65535
+```
+
+建议用 `nohup kubectl port-forward ... &` 后台启动，并把日志写入 `/tmp/*-pf.log`，不要在多个终端反复启动同一组端口。
